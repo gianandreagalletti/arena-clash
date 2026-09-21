@@ -6,7 +6,8 @@ import { createEmptyFrame } from './InputFrame.js';
 import { readGamepadFrame } from './gamepad.js';
 import { readKeyboardMouseFrame } from './keyboardMouse.js';
 
-// Device descriptors: { kind: 'gamepad', pad } | { kind: 'keyboardMouse' }
+// Device descriptors: { kind: 'gamepad', padIndex } | { kind: 'keyboardMouse' }
+// Store pad INDEX (0-based), not the pad object itself, so we always look up live pads.
 
 export class DeviceManager {
   constructor() {
@@ -23,8 +24,8 @@ export class DeviceManager {
 
   _sameDevice(a, b) {
     if (!a || !b || a.kind !== b.kind) return false;
-    if (a.kind === 'gamepad') return a.pad.index === b.pad.index;
-    return true;
+    if (a.kind === 'gamepad') return a.padIndex === b.padIndex;
+    return true; // keyboard/mouse is a singleton
   }
 
   findSlotForDevice(device) {
@@ -61,12 +62,13 @@ export class DeviceManager {
 
   /**
    * Builds the 3 InputFrames for this tick.
+   * `gamepadList`: live array from this.input.gamepad.gamepads (or null/empty array if not available).
    * `keys`: { w,a,s,d,q,e,r } booleans for the keyboard.
    * `pointerScreen`: { x, y } in canvas px.
    * `mouseDown`: boolean.
    * `playersWorld`: array of 3 { x, y } — current sim positions, for mouse-relative aim.
    */
-  buildFrames(keys, pointerScreen, mouseDown, playersWorld) {
+  buildFrames(gamepadList, keys, pointerScreen, mouseDown, playersWorld) {
     const frames = [createEmptyFrame(), createEmptyFrame(), createEmptyFrame()];
 
     if (this.debugMode) {
@@ -84,12 +86,13 @@ export class DeviceManager {
       if (!device) continue;
 
       if (device.kind === 'gamepad') {
-        if (!device.pad.connected) {
+        const pad = gamepadList && gamepadList[device.padIndex];
+        if (!pad || !pad.connected) {
           this.disconnectedSlots.add(i);
           continue; // neutral input until it reconnects
         }
         this.disconnectedSlots.delete(i);
-        frames[i] = readGamepadFrame(device.pad);
+        frames[i] = readGamepadFrame(pad);
       } else if (device.kind === 'keyboardMouse') {
         frames[i] = readKeyboardMouseFrame(keys, pointerScreen, playersWorld[i], mouseDown);
       }

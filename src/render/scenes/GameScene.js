@@ -101,7 +101,8 @@ export default class GameScene extends Phaser.Scene {
       e: this.keys.e.isDown,
       r: this.keys.r.isDown,
     };
-    const frames = this.deviceManager.buildFrames(keys, this._pointerScreen(), this.mouseDown, playersWorld);
+    const gamepadList = this.input.gamepad?.gamepads || [];
+    const frames = this.deviceManager.buildFrames(gamepadList, keys, this._pointerScreen(), this.mouseDown, playersWorld);
 
     const prevLogCount = this.state.logs.length;
     this.state = step(this.state, frames);

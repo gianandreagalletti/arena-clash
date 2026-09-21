@@ -85,17 +85,17 @@ export default class JoinScene extends Phaser.Scene {
     for (const pad of this.input.gamepad.gamepads) {
       if (!pad) continue;
 
-      const padId = pad.index;
-      const device = { kind: 'gamepad', pad };
+      const padIndex = pad.index; // 0-based, stored as-is
+      const device = { kind: 'gamepad', padIndex };
 
-      if (!this.prevPadState.has(padId)) {
-        this.prevPadState.set(padId, {
+      if (!this.prevPadState.has(padIndex)) {
+        this.prevPadState.set(padIndex, {
           A: false,
           B: false,
           Start: false,
         });
       }
-      const prev = this.prevPadState.get(padId);
+      const prev = this.prevPadState.get(padIndex);
 
       // Detect button transitions (false -> true).
       const now_A = pad.buttons[GAMEPAD_BUTTON_A].pressed;
@@ -125,16 +125,32 @@ export default class JoinScene extends Phaser.Scene {
     if (!this.input.gamepad || !this.input.gamepad.gamepads) {
       lines.push('Gamepad support: not available');
     } else {
-      lines.push(`Detected ${this.input.gamepad.gamepads.filter(p => p).length} pad(s)`);
+      const detected = this.input.gamepad.gamepads.filter(p => p).length;
+      lines.push(`=== Live Browser Gamepads: ${detected} ===`);
       for (const pad of this.input.gamepad.gamepads) {
         if (!pad) continue;
         lines.push(
-          `Pad ${pad.index} (${pad.id}): A=${pad.buttons[0].pressed} B=${pad.buttons[1].pressed} ` +
-          `Start=${pad.buttons[9].pressed} LStick=(${pad.axes[0].toFixed(2)},${pad.axes[1].toFixed(2)}) ` +
-          `RStick=(${pad.axes[2].toFixed(2)},${pad.axes[3].toFixed(2)})`
+          `[${pad.index}] ${pad.id}: A=${pad.buttons[0].pressed} B=${pad.buttons[1].pressed} ` +
+          `Start=${pad.buttons[9].pressed}`
         );
       }
     }
+
+    lines.push('=== Assigned Slots ===');
+    for (let i = 0; i < 3; i++) {
+      const device = this.deviceManager.slots[i];
+      const charName = CHARACTERS[this.characterAssignment[i]].name;
+      if (!device) {
+        lines.push(`P${i + 1} [${charName}]: empty`);
+      } else if (device.kind === 'gamepad') {
+        const pad = this.input.gamepad?.gamepads?.[device.padIndex];
+        const padInfo = pad ? `connected` : `NOT FOUND (idx=${device.padIndex})`;
+        lines.push(`P${i + 1} [${charName}]: Gamepad ${device.padIndex} ${padInfo}`);
+      } else {
+        lines.push(`P${i + 1} [${charName}]: Keyboard/Mouse`);
+      }
+    }
+
     this.debugOverlay.setText(lines.join('\n'));
   }
 
@@ -182,7 +198,7 @@ export default class JoinScene extends Phaser.Scene {
       const charName = CHARACTERS[this.characterAssignment[i]].name;
       const label = device
         ? device.kind === 'gamepad'
-          ? `P${i + 1} [${charName}]: Gamepad ${device.pad.index + 1}`
+          ? `P${i + 1} [${charName}]: Gamepad ${device.padIndex + 1}` // 1-based display
           : `P${i + 1} [${charName}]: Keyboard/Mouse`
         : `P${i + 1} [${charName}]: -- empty --`;
       text.setText(label);
