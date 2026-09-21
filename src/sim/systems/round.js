@@ -7,22 +7,27 @@ import {
   ROUND_RECAP_TICKS,
   ROUNDS_TO_WIN_MATCH,
   ULT_CHARGE_CARRY_FRACTION,
-  CHARACTERS,
 } from '../config/balance.js';
 import { SPAWN_POINTS } from '../arena.js';
 import { buildRoundLog } from '../log.js';
 
-/** Resets one player's per-round state (position, HP, cooldowns, stats). Ult charge handled by caller. */
+/**
+ * Resets one player's per-round state (position, HP, cooldowns, stats).
+ * Ult charge is handled by the caller. Boost-derived stats (maxHp, speed,
+ * shoot/slash damage) are match-long and deliberately left untouched.
+ */
 function resetPlayerForRound(player) {
   const spawn = SPAWN_POINTS[player.id];
   player.x = spawn.x;
   player.y = spawn.y;
   player.aimX = spawn.defaultAimX;
   player.aimY = spawn.defaultAimY;
-  player.hp = CHARACTERS[player.characterId].hp;
-  player.maxHp = CHARACTERS[player.characterId].hp;
+  player.hp = player.maxHp;
   player.alive = true;
-  player.fireCooldownTicks = 0;
+  player.shootCooldownTicks = 0;
+  player.slashCooldownTicks = 0;
+  player.shieldActiveUntilTick = 0;
+  player.shieldReadyAtTick = 0;
   player.invulnUntilTick = 0; // set once the round actually starts playing
   player.damageDealt = 0;
   player.damageTaken = 0;

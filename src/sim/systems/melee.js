@@ -1,5 +1,6 @@
-// Berserker-style instantaneous frontal-arc melee attack.
+// Slash: instantaneous frontal-arc melee attack. Shared by all characters.
 
+import { ACTIONS } from '../config/balance.js';
 import { applyDamage, isUntargetable } from './damage.js';
 
 function normalizeAngle(a) {
@@ -9,12 +10,14 @@ function normalizeAngle(a) {
 }
 
 /**
- * Resolves one melee swing immediately: hits every alive, targetable enemy
+ * Resolves one Slash swing immediately: hits every alive, targetable enemy
  * within `reachTiles` and inside the frontal arc (centered on the attacker's
  * current aim direction), at most once per call (one call = one swing).
+ * Damage comes from the attacker's boost-derived `slashDamage`.
  */
-export function performMelee(state, attacker, characterDef) {
-  const { damage, arcDegrees, reachTiles } = characterDef.attack;
+export function performMelee(state, attacker) {
+  const { arcDegrees, reachTiles } = ACTIONS.slash;
+  const damage = attacker.slashDamage;
   const halfArcRad = ((arcDegrees / 2) * Math.PI) / 180;
   const aimAngle = Math.atan2(attacker.aimY, attacker.aimX);
 

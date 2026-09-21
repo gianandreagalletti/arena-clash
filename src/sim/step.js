@@ -1,21 +1,22 @@
 // The pure sim step function. step(state, inputs) -> newState.
 // Never mutates its `state` argument; never touches Phaser/DOM/window/Math.random.
 
-import { CHARACTERS, AIM_HOLD_LAST_DIRECTION_DEADZONE } from './config/balance.js';
+import { ACTIONS, AIM_HOLD_LAST_DIRECTION_DEADZONE } from './config/balance.js';
 import { applyMovement } from './systems/movement.js';
 import { performMelee } from './systems/melee.js';
 import { spawnProjectile, updateProjectiles } from './systems/projectiles.js';
 import { tickCountdown, checkRoundEnd, tickRecap } from './systems/round.js';
 
+// `ult` has no button yet (the charge meter is still tracked in state), so the
+// frame carries exactly the three live actions: Shoot, Slash, Shield.
 export const NEUTRAL_INPUT = Object.freeze({
   moveX: 0,
   moveY: 0,
   aimX: 0,
   aimY: 0,
   fire: false,
-  ab1: false,
-  ab2: false,
-  ult: false,
+  slash: false,
+  shield: false,
 });
 
 function cloneState(state) {
@@ -28,11 +29,9 @@ function tickPlaying(state, inputs) {
     if (!player.alive) continue; // eliminated players are spectators: no sim effect
 
     const input = inputs[i] || NEUTRAL_INPUT;
-    const characterDef = CHARACTERS[player.characterId];
 
-    if (player.fireCooldownTicks > 0) {
-      player.fireCooldownTicks -= 1;
-    }
+    if (player.shootCooldownTicks > 0) player.shootCooldownTicks -= 1;
+    if (player.slashCooldownTicks > 0) player.slashCooldownTicks -= 1;
 
     const aimMag = Math.hypot(input.aimX || 0, input.aimY || 0);
     if (aimMag >= AIM_HOLD_LAST_DIRECTION_DEADZONE) {
@@ -41,15 +40,26 @@ function tickPlaying(state, inputs) {
     }
     // else: keep the previous aim direction (idle stick / mouse didn't move).
 
-    applyMovement(player, input, characterDef.speedTilesPerSec);
+    // Movement is allowed even while shielded.
+    applyMovement(player, input, player.speedTilesPerSec);
 
-    if (input.fire && player.fireCooldownTicks <= 0) {
-      if (characterDef.attack.kind === 'melee') {
-        performMelee(state, player, characterDef);
-      } else {
-        spawnProjectile(state, player, characterDef);
+    // Shield: its 6s cooldown starts when the shield ends, so shieldReadyAtTick
+    // alone gates both re-triggering mid-shield and pressing during cooldown.
+    if (input.shield && state.tick >= player.shieldReadyAtTick) {
+      player.shieldActiveUntilTick = state.tick + ACTIONS.shield.durationTicks;
+      player.shieldReadyAtTick = player.shieldActiveUntilTick + ACTIONS.shield.cooldownTicks;
+    }
+
+    const shielded = state.tick < player.shieldActiveUntilTick;
+    if (!shielded) {
+      if (input.fire && player.shootCooldownTicks <= 0) {
+        spawnProjectile(state, player);
+        player.shootCooldownTicks = ACTIONS.shoot.cooldownTicks;
       }
-      player.fireCooldownTicks = characterDef.attack.cooldownTicks;
+      if (input.slash && player.slashCooldownTicks <= 0) {
+        performMelee(state, player);
+        player.slashCooldownTicks = ACTIONS.slash.cooldownTicks;
+      }
     }
   }
 

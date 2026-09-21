@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { step, newPlayingGame, clearInvuln, makeInput } from './helpers.js';
 
-test('fire rate: Sniper holding fire for 6s fires exactly 5 shots', () => {
+test('fire rate: holding Shoot for 6s fires exactly 12 shots (2/s)', () => {
   let state = newPlayingGame(2, ['sniper', 'berserker', 'summoner']);
   clearInvuln(state);
 
@@ -19,5 +19,5 @@ test('fire rate: Sniper holding fire for 6s fires exactly 5 shots', () => {
     state = step(state, [fireInput, neutral, neutral]);
   }
 
-  assert.strictEqual(state.nextProjectileId - 1, 5);
+  assert.strictEqual(state.nextProjectileId - 1, 12);
 });

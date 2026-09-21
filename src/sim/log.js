@@ -17,6 +17,7 @@ export function buildRoundLog(state, winner) {
     players: state.players.map((p) => ({
       id: p.id,
       characterId: p.characterId,
+      boosts: { ...p.boosts },
       damageDealt: p.damageDealt,
       damageTaken: p.damageTaken,
       eliminations: p.eliminations,
@@ -32,10 +33,12 @@ export function printRoundLog(log) {
       `in ${log.durationSec.toFixed(1)}s | took dmg in first 30s: ${log.winnerTookDamageInFirst30s}`
   );
   for (const p of log.players) {
+    const boosts = `hp${p.boosts.hp}/spd${p.boosts.speed}/sht${p.boosts.shootDmg}/slh${p.boosts.slashDmg}`;
     // eslint-disable-next-line no-console
     console.log(
-      `  P${p.id + 1} (${p.characterId}): dealt ${p.damageDealt}, taken ${p.damageTaken}, ` +
-        `elims ${p.eliminations}, died ${p.timeOfDeathSec === null ? '-' : p.timeOfDeathSec.toFixed(1) + 's'}`
+      `  P${p.id + 1} (${p.characterId}) [${boosts}]: dealt ${p.damageDealt.toFixed(1)}, ` +
+        `taken ${p.damageTaken.toFixed(1)}, elims ${p.eliminations}, ` +
+        `died ${p.timeOfDeathSec === null ? '-' : p.timeOfDeathSec.toFixed(1) + 's'}`
     );
   }
 }

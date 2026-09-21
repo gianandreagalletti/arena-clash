@@ -14,13 +14,15 @@ export default class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
-  init({ deviceManager, characterIds }) {
+  init({ deviceManager, characterIds, boostAllocations }) {
     this.deviceManager = deviceManager;
     this.characterIds = characterIds;
+    // Fixed for the whole match, including a rematch from the match-over screen.
+    this.boostAllocations = boostAllocations;
   }
 
   create() {
-    this.state = createInitialState((Date.now() ^ 0) >>> 0, this.characterIds);
+    this.state = createInitialState((Date.now() ^ 0) >>> 0, this.characterIds, this.boostAllocations);
     this.accumulatorMs = 0;
 
     this.staticGraphics = this.add.graphics();
@@ -66,7 +68,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _rematch() {
-    this.state = createInitialState((Date.now() ^ 0) >>> 0, this.characterIds);
+    this.state = createInitialState((Date.now() ^ 0) >>> 0, this.characterIds, this.boostAllocations);
     this.accumulatorMs = 0;
   }
 

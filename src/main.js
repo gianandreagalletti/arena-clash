@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ARENA_WIDTH_TILES, ARENA_HEIGHT_TILES, TILE_SIZE_PX } from './sim/config/balance.js';
 import JoinScene from './render/scenes/JoinScene.js';
+import BoostScene from './render/scenes/BoostScene.js';
 import GameScene from './render/scenes/GameScene.js';
 
 new Phaser.Game({
@@ -12,5 +13,5 @@ new Phaser.Game({
   input: {
     gamepad: true,
   },
-  scene: [JoinScene, GameScene],
+  scene: [JoinScene, BoostScene, GameScene],
 });

@@ -1,6 +1,7 @@
 // Maps keyboard + mouse state to an InputFrame.
 // WASD: move · Mouse: aim toward cursor (relative to the player's screen
-// position) · Left click (hold): fire · Q/E/R: ability1/ability2/ultimate.
+// position) · Left click (hold): Shoot · E: Slash · Q: Shield ·
+// R: reserved (future ultimate).
 //
 // Diagonal move normalization is handled centrally in sim/systems/movement.js
 // (the sim is the single authority on movement math), so this layer just
@@ -33,8 +34,7 @@ export function readKeyboardMouseFrame(keys, pointerScreen, playerWorld, mouseDo
     aimX,
     aimY,
     fire: !!mouseDown,
-    ab1: !!keys.q,
-    ab2: !!keys.e,
-    ult: !!keys.r,
+    slash: !!keys.e,
+    shield: !!keys.q,
   };
 }

@@ -186,7 +186,8 @@ export default class JoinScene extends Phaser.Scene {
   }
 
   _startMatch() {
-    this.scene.start('GameScene', {
+    // Boost allocation happens between here and the Round 1 countdown.
+    this.scene.start('BoostScene', {
       deviceManager: this.deviceManager,
       characterIds: this.characterAssignment,
     });

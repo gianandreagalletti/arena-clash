@@ -46,8 +46,52 @@ export const ULT_CHARGE_PER_DAMAGE_TAKEN = 0.5; // per HP of damage taken, award
 export const ULT_CHARGE_PER_ELIMINATION = 20; // awarded to the player who got the kill
 export const ULT_CHARGE_CARRY_FRACTION = 0.5; // fraction carried into the next round
 
+// --- Shared actions ---
+// All three characters get the same Shoot / Slash / Shield. Characters differ
+// only by HP and Speed (see CHARACTERS below).
+export const ACTIONS = {
+  shoot: {
+    damage: 18,
+    shotsPerSec: 2,
+    cooldownTicks: secToTicks(1 / 2), // 30 ticks = one shot every 0.5s
+    projectileSpeedTilesPerSec: 14,
+    rangeTiles: 10,
+    projectileRadiusTiles: 0.12,
+  },
+  slash: {
+    damage: 14,
+    hitsPerSec: 2.5,
+    cooldownTicks: secToTicks(1 / 2.5), // 24 ticks
+    reachTiles: 1.5,
+    arcDegrees: 90,
+  },
+  shield: {
+    durationSec: 2.0,
+    durationTicks: secToTicks(2.0), // 120 ticks
+    damageReduction: 0.7, // incoming damage multiplied by (1 - this) while active
+    cooldownSec: 6.0,
+    cooldownTicks: secToTicks(6.0), // 360 ticks, starts when the shield ENDS
+    // TODO Week 2/3: boostable/charged shield (duration or reduction scaling with
+    // spent points / charge). Flat value for now, identical for every character.
+  },
+};
+
+// --- Pre-match boost allocation ---
+// Each player spends BOOST_POINTS_PER_PLAYER points across these categories.
+// Bonuses are multipliers on the base stat, applied once in createInitialState
+// and carried unchanged through every round of the match.
+export const BOOST_POINTS_PER_PLAYER = 10;
+export const BOOST_CATEGORIES = ['hp', 'speed', 'shootDmg', 'slashDmg'];
+export const BOOST_BONUS_PER_POINT = {
+  hp: 0.04, // +4% max HP per point
+  speed: 0.03, // +3% move speed per point
+  shootDmg: 0.03, // +3% Shoot damage per point
+  slashDmg: 0.05, // +5% Slash damage per point
+};
+
 // --- Characters ---
-// attack.cooldownTicks is derived once from cooldownSec (or hitsPerSec) below.
+// Characters differ ONLY by HP and Speed. Everything else (id/name/color) is
+// identity/presentation, and all combat numbers live in ACTIONS above.
 export const CHARACTERS = {
   sniper: {
     id: 'sniper',
@@ -55,25 +99,6 @@ export const CHARACTERS = {
     color: '#e74c3c', // red
     hp: 80,
     speedTilesPerSec: 4.5,
-    attack: {
-      kind: 'projectile',
-      damage: 35,
-      speedTilesPerSec: 18,
-      rangeTiles: 14,
-      cooldownSec: 1.2,
-      cooldownTicks: secToTicks(1.2),
-      projectileRadiusTiles: 0.12,
-    },
-    // Week 2 stubs — numbers TODO, see GDD.
-    ability1: {
-      // TODO(week2): see GDD for values (e.g. piercing shot / charge shot)
-    },
-    ability2: {
-      // TODO(week2): see GDD for values
-    },
-    ultimate: {
-      // TODO(week2): see GDD for values
-    },
   },
   berserker: {
     id: 'berserker',
@@ -81,23 +106,6 @@ export const CHARACTERS = {
     color: '#3498db', // blue
     hp: 140,
     speedTilesPerSec: 5.0,
-    attack: {
-      kind: 'melee',
-      damage: 12,
-      arcDegrees: 90,
-      reachTiles: 1.5,
-      hitsPerSec: 3,
-      cooldownTicks: secToTicks(1 / 3),
-    },
-    ability1: {
-      // TODO(week2): see GDD for values
-    },
-    ability2: {
-      // TODO(week2): see GDD for values
-    },
-    ultimate: {
-      // TODO(week2): see GDD for values
-    },
   },
   summoner: {
     id: 'summoner',
@@ -105,25 +113,6 @@ export const CHARACTERS = {
     color: '#2ecc71', // green
     hp: 100,
     speedTilesPerSec: 4.2,
-    attack: {
-      kind: 'projectile_aoe',
-      damage: 16, // explosion damage
-      speedTilesPerSec: 10,
-      rangeTiles: 9,
-      cooldownSec: 0.5,
-      cooldownTicks: secToTicks(0.5),
-      projectileRadiusTiles: 0.12,
-      explodeRadiusTiles: 0.75,
-    },
-    ability1: {
-      // TODO(week2): see GDD for values
-    },
-    ability2: {
-      // TODO(week2): see GDD for values
-    },
-    ultimate: {
-      // TODO(week2): see GDD for values
-    },
   },
 };
 

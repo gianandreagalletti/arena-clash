@@ -1,6 +1,7 @@
 // Projectile spawning, movement, aim assist, and collision (players, cover, arena edges).
 
 import {
+  ACTIONS,
   TICK_RATE,
   ARENA_WIDTH_TILES,
   ARENA_HEIGHT_TILES,
@@ -50,27 +51,32 @@ function bendTowardNearestEnemy(dirX, dirY, owner, players) {
   return { x: Math.cos(newAngle), y: Math.sin(newAngle) };
 }
 
-/** Spawns one projectile for `owner`'s attack, applying aim assist. */
-export function spawnProjectile(state, owner, characterDef) {
-  const { attack } = characterDef;
+/** Spawns one Shoot projectile for `owner`, applying aim assist. */
+export function spawnProjectile(state, owner) {
+  const shoot = ACTIONS.shoot;
   const mag = Math.hypot(owner.aimX, owner.aimY) || 1;
   const aimDir = bendTowardNearestEnemy(owner.aimX / mag, owner.aimY / mag, owner, state.players);
 
   state.projectiles.push({
     id: state.nextProjectileId++,
     ownerId: owner.id,
-    kind: attack.kind, // 'projectile' | 'projectile_aoe'
+    kind: 'projectile', // 'projectile_aoe' is retained but unused this week (see explode())
     x: owner.x,
     y: owner.y,
-    vx: aimDir.x * attack.speedTilesPerSec,
-    vy: aimDir.y * attack.speedTilesPerSec,
-    radius: attack.projectileRadiusTiles,
-    damage: attack.damage,
-    remainingRangeTiles: attack.rangeTiles,
-    explodeRadiusTiles: attack.explodeRadiusTiles ?? 0,
+    vx: aimDir.x * shoot.projectileSpeedTilesPerSec,
+    vy: aimDir.y * shoot.projectileSpeedTilesPerSec,
+    radius: shoot.projectileRadiusTiles,
+    damage: owner.shootDamage, // boost-derived, per player
+    remainingRangeTiles: shoot.rangeTiles,
+    explodeRadiusTiles: 0,
   });
 }
 
+/**
+ * Area-damage impact. No Week 1 action spawns a 'projectile_aoe', so this is
+ * currently dead code — kept wired (rather than deleted) because Week 2/3
+ * abilities are expected to reuse it.
+ */
 function explode(state, proj, x, y) {
   state.explosions.push({ x, y, radius: proj.explodeRadiusTiles, tick: state.tick, ownerId: proj.ownerId });
   const owner = state.players.find((p) => p.id === proj.ownerId);

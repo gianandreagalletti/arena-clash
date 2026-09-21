@@ -4,6 +4,7 @@
 
 import Phaser from 'phaser';
 import {
+  TICK_RATE,
   TILE_SIZE_PX,
   ARENA_WIDTH_TILES,
   ARENA_HEIGHT_TILES,
@@ -116,6 +117,15 @@ function drawPlayer(graphics, player, state) {
     graphics.strokeCircle(px, py, radiusPx + 3);
   }
 
+  // Shield bubble: translucent fill + ring in the player's own color.
+  if (state.tick < player.shieldActiveUntilTick) {
+    const bubbleR = radiusPx + 8;
+    graphics.fillStyle(color, 0.22);
+    graphics.fillCircle(px, py, bubbleR);
+    graphics.lineStyle(2, color, 0.9);
+    graphics.strokeCircle(px, py, bubbleR);
+  }
+
   // Aim direction triangle.
   const angle = Math.atan2(player.aimY, player.aimX);
   const tipX = px + Math.cos(angle) * (radiusPx + 10);
@@ -175,8 +185,18 @@ export function createHud(scene) {
 function updateHud(hud, state) {
   state.players.forEach((p, i) => {
     const def = CHARACTERS[p.characterId];
+    let shield;
+    if (state.tick < p.shieldActiveUntilTick) {
+      shield = 'SHLD up';
+    } else if (state.tick < p.shieldReadyAtTick) {
+      shield = `SHLD ${Math.ceil((p.shieldReadyAtTick - state.tick) / TICK_RATE)}s`;
+    } else {
+      shield = 'SHLD ok';
+    }
     hud.players[i].setText(
-      `P${i + 1} ${def.name}\nHP ${Math.ceil(p.hp)}/${p.maxHp}  ULT ${Math.floor(p.ultCharge)}\nWins ${p.roundsWon}/${ROUNDS_TO_WIN_MATCH}`
+      `P${i + 1} ${def.name}\n` +
+        `HP ${Math.ceil(p.hp)}/${Math.round(p.maxHp)}  ULT ${Math.floor(p.ultCharge)}\n` +
+        `${shield}  Wins ${p.roundsWon}/${ROUNDS_TO_WIN_MATCH}`
     );
     hud.players[i].setColor(colorToCss(def.color));
   });
