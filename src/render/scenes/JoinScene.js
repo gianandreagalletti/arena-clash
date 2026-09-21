@@ -35,7 +35,7 @@ export default class JoinScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.add
-      .text(this.scale.width / 2, 100, 'Once all 3 slots are filled, press Start / Space to begin  |  F1: debug solo mode', {
+      .text(this.scale.width / 2, 100, 'Once all 3 slots are filled, press Start / Space to begin  |  F1: debug solo  |  F2: gamepad debug', {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: '#666666',
@@ -52,27 +52,90 @@ export default class JoinScene extends Phaser.Scene {
       .text(this.scale.width / 2, this.scale.height - 40, '', { fontFamily: 'monospace', fontSize: '14px', color: '#ffcc66' })
       .setOrigin(0.5);
 
-    this._wireGamepad();
+    this.debugOverlay = this.add
+      .text(10, 10, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffff00' })
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.debugOverlayVisible = false;
+
+    // Track button state for edge-detection (previous frame).
+    this.prevPadState = new Map();
+
     this._wireKeyboardMouse();
+
+    this.input.keyboard.on('keydown-F2', () => {
+      this.debugOverlayVisible = !this.debugOverlayVisible;
+    });
 
     this._refresh();
   }
 
-  _wireGamepad() {
-    if (!this.input.gamepad) return;
-    this.input.gamepad.on('down', (pad, button) => {
-      if (this.debugStarting) return;
+  update() {
+    this._pollGamepads();
+    if (this.debugOverlayVisible) {
+      this._updateDebugOverlay();
+    } else {
+      this.debugOverlay.setText('');
+    }
+  }
+
+  _pollGamepads() {
+    if (!this.input.gamepad || !this.input.gamepad.gamepads) return;
+
+    for (const pad of this.input.gamepad.gamepads) {
+      if (!pad) continue;
+
+      const padId = pad.index;
       const device = { kind: 'gamepad', pad };
-      if (button.index === GAMEPAD_BUTTON_A) {
+
+      if (!this.prevPadState.has(padId)) {
+        this.prevPadState.set(padId, {
+          A: false,
+          B: false,
+          Start: false,
+        });
+      }
+      const prev = this.prevPadState.get(padId);
+
+      // Detect button transitions (false -> true).
+      const now_A = pad.buttons[GAMEPAD_BUTTON_A].pressed;
+      const now_B = pad.buttons[GAMEPAD_BUTTON_B].pressed;
+      const now_Start = pad.buttons[GAMEPAD_BUTTON_START].pressed;
+
+      if (now_A && !prev.A) {
         this.deviceManager.join(device);
         this._refresh();
-      } else if (button.index === GAMEPAD_BUTTON_B) {
+      }
+      if (now_B && !prev.B) {
         this.deviceManager.leave(device);
         this._refresh();
-      } else if (button.index === GAMEPAD_BUTTON_START) {
+      }
+      if (now_Start && !prev.Start) {
         this._tryStart();
       }
-    });
+
+      prev.A = now_A;
+      prev.B = now_B;
+      prev.Start = now_Start;
+    }
+  }
+
+  _updateDebugOverlay() {
+    const lines = [];
+    if (!this.input.gamepad || !this.input.gamepad.gamepads) {
+      lines.push('Gamepad support: not available');
+    } else {
+      lines.push(`Detected ${this.input.gamepad.gamepads.filter(p => p).length} pad(s)`);
+      for (const pad of this.input.gamepad.gamepads) {
+        if (!pad) continue;
+        lines.push(
+          `Pad ${pad.index} (${pad.id}): A=${pad.buttons[0].pressed} B=${pad.buttons[1].pressed} ` +
+          `Start=${pad.buttons[9].pressed} LStick=(${pad.axes[0].toFixed(2)},${pad.axes[1].toFixed(2)}) ` +
+          `RStick=(${pad.axes[2].toFixed(2)},${pad.axes[3].toFixed(2)})`
+        );
+      }
+    }
+    this.debugOverlay.setText(lines.join('\n'));
   }
 
   _wireKeyboardMouse() {
