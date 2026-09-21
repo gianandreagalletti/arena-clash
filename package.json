@@ -1,0 +1,19 @@
+{
+  "name": "arena-clash",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arena Clash - top-down 3-player arena shooter (Week 1: core sim + basic combat)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test \"tests/**/*.test.js\""
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  }
+}
