@@ -14,6 +14,13 @@ import {
   CATEGORY_LABELS,
 } from '../../input/boostAllocation.js';
 import { EdgeTracker, readGamepadMenuRaw, readKeyboardMenuRaw } from '../../input/menuInput.js';
+import { PALETTE } from '../art/palette.js';
+import { PIXEL_FONT_FAMILY } from '../art/font.js';
+import { drawPanel, pixelTextStyle } from '../ui/panel.js';
+
+function colorInt(hex) {
+  return Phaser.Display.Color.HexStringToColor(hex).color;
+}
 
 // Shared pre-match screen: all 3 players spend their points at the same time,
 // everyone's allocation visible to everyone. Runs between the join screen and
@@ -42,45 +49,64 @@ export default class BoostScene extends Phaser.Scene {
     }
 
     this.add
-      .text(this.scale.width / 2, 26, 'BOOST ALLOCATION', {
-        fontFamily: 'monospace',
-        fontSize: '28px',
-        color: '#ffffff',
-      })
+      .text(this.scale.width / 2, 22, 'BOOST ALLOCATION', pixelTextStyle(PIXEL_FONT_FAMILY, 20, PALETTE.torchCore))
       .setOrigin(0.5);
     this.add
-      .text(this.scale.width / 2, 56, `Spend ${BOOST_POINTS_PER_PLAYER} points — fixed for the whole match`, {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: '#aaaaaa',
-      })
+      .text(
+        this.scale.width / 2,
+        50,
+        `SPEND ${BOOST_POINTS_PER_PLAYER} POINTS — FIXED FOR THE WHOLE MATCH`,
+        pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted)
+      )
       .setOrigin(0.5);
     this.add
-      .text(this.scale.width / 2, 76, 'Gamepad: D-pad/stick select · A add · B remove · Start ready', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#666666',
-      })
+      .text(
+        this.scale.width / 2,
+        70,
+        'GAMEPAD: D-PAD/STICK SELECT · A ADD · B REMOVE · START READY',
+        pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted)
+      )
       .setOrigin(0.5);
     this.add
-      .text(this.scale.width / 2, 92, 'Keyboard: Up/Down select · Right add · Left remove · Enter ready', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#666666',
-      })
+      .text(
+        this.scale.width / 2,
+        86,
+        'KEYBOARD: UP/DOWN SELECT · RIGHT ADD · LEFT REMOVE · ENTER READY',
+        pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted)
+      )
       .setOrigin(0.5);
 
     const columnWidth = this.scale.width / 3;
-    this.playerTexts = [0, 1, 2].map((i) =>
+    const panelW = columnWidth - 20;
+    const panelH = 190;
+    const panelTop = 112;
+    this.panelBg = this.add.graphics();
+
+    this.playerHeaderTexts = [0, 1, 2].map((i) =>
       this.add
-        .text(columnWidth * i + columnWidth / 2, 140, '', {
-          fontFamily: 'monospace',
-          fontSize: '15px',
-          color: '#ffffff',
-          align: 'left',
-        })
+        .text(columnWidth * i + columnWidth / 2, panelTop + 8, '', pixelTextStyle(PIXEL_FONT_FAMILY, 10))
         .setOrigin(0.5, 0)
     );
+    this.playerPointsTexts = [0, 1, 2].map((i) =>
+      this.add
+        .text(columnWidth * i + columnWidth / 2, panelTop + 26, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted))
+        .setOrigin(0.5, 0)
+    );
+    this.categoryLabelTexts = [0, 1, 2].map((i) =>
+      [0, 1, 2, 3].map((c) =>
+        this.add
+          .text(columnWidth * i + 14, panelTop + 46 + c * 30, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8))
+          .setOrigin(0, 0)
+      )
+    );
+    this.categoryBarBg = this.add.graphics();
+    this.statusTexts = [0, 1, 2].map((i) =>
+      this.add
+        .text(columnWidth * i + columnWidth / 2, panelTop + panelH - 20, '', pixelTextStyle(PIXEL_FONT_FAMILY, 10))
+        .setOrigin(0.5, 0)
+    );
+
+    this._layout = { columnWidth, panelW, panelH, panelTop };
 
     this.arrowKeys = this.input.keyboard.createCursorKeys();
     this.enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
@@ -137,30 +163,46 @@ export default class BoostScene extends Phaser.Scene {
   }
 
   _refresh() {
+    const { columnWidth, panelW, panelH, panelTop } = this._layout;
+    this.panelBg.clear();
+    this.categoryBarBg.clear();
+
     for (let i = 0; i < 3; i++) {
       const def = CHARACTERS[this.characterIds[i]];
       const allocation = this.allocations[i];
       const hasDevice = !!this._deviceForSlot(i);
+      const panelX = columnWidth * i + 10;
 
-      const lines = [`P${i + 1} ${def.name}`, `Points left: ${pointsRemaining(allocation)}`, ''];
+      drawPanel(this.panelBg, panelX, panelTop, panelW, panelH);
+
+      this.playerHeaderTexts[i].setText(`P${i + 1} ${def.name.toUpperCase()}`);
+      this.playerHeaderTexts[i].setColor(this.ready[i] ? '#66FF88' : def.color);
+      this.playerPointsTexts[i].setText(
+        hasDevice ? `POINTS LEFT: ${pointsRemaining(allocation)}` : 'NO DEVICE — AUTO'
+      );
 
       BOOST_CATEGORIES.forEach((category, c) => {
         const selected = !this.ready[i] && hasDevice && this.cursors[i] === c;
         const points = allocation[category];
         const bonusPct = Math.round(BOOST_BONUS_PER_POINT[category] * points * 100);
-        const bar = '#'.repeat(points) + '.'.repeat(BOOST_POINTS_PER_PLAYER - points);
-        lines.push(`${selected ? '>' : ' '} ${CATEGORY_LABELS[category].padEnd(10)} ${bar} +${bonusPct}%`);
+
+        const label = this.categoryLabelTexts[i][c];
+        label.setText(`${selected ? '>' : ' '} ${CATEGORY_LABELS[category]} +${bonusPct}%`);
+        label.setColor(selected ? PALETTE.torchCore : PALETTE.uiText);
+
+        const barY = panelTop + 60 + c * 30;
+        const barX = columnWidth * i + 14;
+        const segW = 12;
+        const segGap = 1;
+        for (let s = 0; s < BOOST_POINTS_PER_PLAYER; s++) {
+          const filled = s < points;
+          this.categoryBarBg.fillStyle(filled ? colorInt(def.color) : 0x000000, filled ? 1 : 0.6);
+          this.categoryBarBg.fillRect(barX + s * (segW + segGap), barY, segW, 6);
+        }
       });
 
-      lines.push('');
-      if (!hasDevice) {
-        lines.push('(no device — auto)');
-      } else {
-        lines.push(this.ready[i] ? 'READY' : 'not ready');
-      }
-
-      this.playerTexts[i].setText(lines.join('\n'));
-      this.playerTexts[i].setColor(this.ready[i] ? '#66ff88' : def.color);
+      this.statusTexts[i].setText(hasDevice ? (this.ready[i] ? 'READY' : 'NOT READY') : 'READY (AUTO)');
+      this.statusTexts[i].setColor(this.ready[i] ? '#66FF88' : PALETTE.uiTextMuted);
     }
   }
 

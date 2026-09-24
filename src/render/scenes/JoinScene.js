@@ -2,6 +2,9 @@ import Phaser from 'phaser';
 import { DeviceManager } from '../../input/deviceManager.js';
 import { CHARACTERS, CHARACTER_IDS } from '../../sim/config/balance.js';
 import { GAMEPAD_BUTTON_A, GAMEPAD_BUTTON_B, GAMEPAD_BUTTON_START } from '../../input/gamepad.js';
+import { PALETTE } from '../art/palette.js';
+import { PIXEL_FONT_FAMILY } from '../art/font.js';
+import { drawPanel, pixelTextStyle } from '../ui/panel.js';
 
 const SLOT_CHARACTERS = readCharacterAssignment();
 
@@ -25,35 +28,41 @@ export default class JoinScene extends Phaser.Scene {
     this.characterAssignment = SLOT_CHARACTERS;
 
     this.add
-      .text(this.scale.width / 2, 40, 'ARENA CLASH', { fontFamily: 'monospace', fontSize: '36px', color: '#fff' })
+      .text(this.scale.width / 2, 36, 'ARENA CLASH', pixelTextStyle(PIXEL_FONT_FAMILY, 24, PALETTE.torchCore))
       .setOrigin(0.5);
     this.add
-      .text(this.scale.width / 2, 80, 'Gamepad: A to join, B to leave  |  Keyboard/Mouse: Enter/Click to join, Esc to leave', {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: '#aaaaaa',
-      })
+      .text(
+        this.scale.width / 2,
+        84,
+        'GAMEPAD: A JOIN, B LEAVE\nKEYBOARD/MOUSE: ENTER/CLICK JOIN, ESC LEAVE',
+        { ...pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted), align: 'center' }
+      )
       .setOrigin(0.5);
     this.add
-      .text(this.scale.width / 2, 100, 'Once all 3 slots are filled, press Start / Space to begin  |  F1: debug solo  |  F2: gamepad debug', {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: '#666666',
-      })
+      .text(
+        this.scale.width / 2,
+        118,
+        'ALL 3 SLOTS FILLED: START/SPACE  ·  F1 DEBUG SOLO  ·  F2 GAMEPAD DEBUG',
+        pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted)
+      )
       .setOrigin(0.5);
 
+    const slotPanelW = 300;
+    const slotPanelH = 34;
+    this.slotBg = this.add.graphics();
     this.slotTexts = [0, 1, 2].map((i) =>
       this.add
-        .text(this.scale.width / 2, 180 + i * 60, '', { fontFamily: 'monospace', fontSize: '22px', color: '#ffffff' })
+        .text(this.scale.width / 2, 160 + i * (slotPanelH + 10) + slotPanelH / 2, '', pixelTextStyle(PIXEL_FONT_FAMILY, 10))
         .setOrigin(0.5)
     );
+    this._slotPanelLayout = { w: slotPanelW, h: slotPanelH, top: 160, gap: 10 };
 
     this.statusText = this.add
-      .text(this.scale.width / 2, this.scale.height - 40, '', { fontFamily: 'monospace', fontSize: '14px', color: '#ffcc66' })
+      .text(this.scale.width / 2, this.scale.height - 30, '', pixelTextStyle(PIXEL_FONT_FAMILY, 10, PALETTE.torchCore))
       .setOrigin(0.5);
 
     this.debugOverlay = this.add
-      .text(10, 10, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffff00' })
+      .text(10, 10, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.torchCore))
       .setScrollFactor(0)
       .setDepth(100);
     this.debugOverlayVisible = false;
@@ -194,20 +203,29 @@ export default class JoinScene extends Phaser.Scene {
   }
 
   _refresh() {
+    const { w, h, top, gap } = this._slotPanelLayout;
+    const panelX = this.scale.width / 2 - w / 2;
+    this.slotBg.clear();
+
     this.slotTexts.forEach((text, i) => {
       const device = this.deviceManager.slots[i];
+      const charColor = CHARACTERS[this.characterAssignment[i]].color;
       const charName = CHARACTERS[this.characterAssignment[i]].name;
+      const panelY = top + i * (h + gap);
+
+      drawPanel(this.slotBg, panelX, panelY, w, h);
+
       const label = device
         ? device.kind === 'gamepad'
-          ? `P${i + 1} [${charName}]: Gamepad ${device.padIndex + 1}` // 1-based display
-          : `P${i + 1} [${charName}]: Keyboard/Mouse`
-        : `P${i + 1} [${charName}]: -- empty --`;
-      text.setText(label);
-      text.setColor(device ? '#66ff88' : '#888888');
+          ? `[${charName}] GAMEPAD ${device.padIndex + 1}` // 1-based display
+          : `[${charName}] KEYBOARD/MOUSE`
+        : `[${charName}] -- EMPTY --`;
+      text.setText(`P${i + 1}  ${label}`);
+      text.setColor(device ? charColor : PALETTE.uiTextMuted);
     });
 
     this.statusText.setText(
-      this.deviceManager.allSlotsFilled() ? 'All slots filled — press Start / Space' : 'Waiting for players...'
+      this.deviceManager.allSlotsFilled() ? 'ALL SLOTS FILLED — PRESS START / SPACE' : 'WAITING FOR PLAYERS...'
     );
   }
 }

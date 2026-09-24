@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { ARENA_WIDTH_TILES, ARENA_HEIGHT_TILES, TILE_SIZE_PX } from './sim/config/balance.js';
+import { CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX } from './render/coords.js';
+import BootScene from './render/scenes/BootScene.js';
 import JoinScene from './render/scenes/JoinScene.js';
 import BoostScene from './render/scenes/BoostScene.js';
 import GameScene from './render/scenes/GameScene.js';
@@ -7,11 +8,16 @@ import GameScene from './render/scenes/GameScene.js';
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'app',
-  width: ARENA_WIDTH_TILES * TILE_SIZE_PX,
-  height: ARENA_HEIGHT_TILES * TILE_SIZE_PX,
+  width: CANVAS_WIDTH_PX,
+  height: CANVAS_HEIGHT_PX,
   backgroundColor: '#000000',
+  pixelArt: true, // disables antialiasing, enables roundPixels — required for crisp pixel art
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
   input: {
     gamepad: true,
   },
-  scene: [JoinScene, BoostScene, GameScene],
+  scene: [BootScene, JoinScene, BoostScene, GameScene],
 });

@@ -58,6 +58,7 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - Boost screen: **Gamepad** d-pad/left stick to pick a category, **A** add a point, **B** remove, **Start** to ready up (press again to un-ready). **Keyboard:** Up/Down to pick, Right to add, Left to remove, **Enter** to ready. The match starts when all three are ready.
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
+- **F3** (in-match) toggles a hitbox overlay: draws the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc) as 1px lines over the art, to check art/hitbox alignment at a glance.
 - **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, Y reserved (future ultimate).
 - **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, R reserved (future ultimate).
 - A round ends when one player is left standing; first to 3 round wins takes the match. At the match-over screen, press **A** (gamepad) or **Space** to rematch (same boost allocation).
@@ -109,7 +110,15 @@ src/
     log.js               # end-of-round log builder + console printer
   input/                # device -> InputFrame mapping, device manager,
                         #   boostAllocation.js (pure point spending), menuInput.js
-  render/               # Phaser scenes (Join -> Boost -> Game); reads state, never mutates it
+  render/               # Phaser scenes (Boot -> Join -> Boost -> Game); reads state, never mutates it
+    art/                # palette.js, sprites.js, textures.js, font.js, hash.js — see "Art" below
+    arenaRenderer.js    # floor/wall/cover/platform/torches
+    players/            # per-player sprite, animation, shield, ghost
+    fx/                 # pooled projectiles, slash smears, elimination poof
+    ui/                 # shared panel + pixel-text-style helpers
+    debug/              # F3 hitbox overlay
+    coords.js           # world tile <-> screen px (adds the 1-tile wall margin)
+    hud.js
 tests/                  # offline node:test sim tests (no browser)
 ```
 
@@ -117,6 +126,105 @@ tests/                  # offline node:test sim tests (no browser)
 so the same seed + same input sequence always replays identically — verified by
 the determinism test. Ticks are integers; all `*Sec` config values are converted
 to `*Ticks` once, at module load, via `secToTicks()`.
+
+## Art
+
+A placeholder-quality pixel-art pass, generated in code (no downloaded assets),
+built to be swapped for real Aseprite spritesheets later without touching game
+code — see `src/render/art/`.
+
+- **`palette.js`** — the single color table. Every generated sprite pulls from
+  it; nothing else in `render/` should hardcode a hex color. Player colors are
+  **palette swaps** (red/blue/green/ghost — four full copies of the same pixel
+  grids with different accent/body/shade/skin colors), not `setTint()`, so the
+  outline and skin never get muddied.
+- **`sprites.js`** — the 12 hand-authored player frames (`{idle|walk}-{down|up|side}-{0|1}`),
+  16×16 character grids (one char = one pixel, `.` = transparent), plus the
+  `LEGEND` mapping each character to a palette *role* (not a literal color).
+  The base "down/idle-0" frame came from the change request's appendix; the
+  other 11 were derived from it (bob, leg-swap, face-hidden, side-profile) with
+  a small throwaway script, then frozen here as plain data. To add a real
+  spritesheet later: replace the grids (or point `textures.js` at loaded image
+  frames) — nothing outside `art/` needs to change, since everything else only
+  ever references texture keys/frame names, never raw pixel data.
+- **`textures.js`** — turns `palette.js` + `sprites.js` into real Phaser
+  textures once, at boot (`BootScene`), under the stable key contract below.
+  Scaling: rather than authoring 16px-native canvases and applying a separate
+  `setScale(2)` everywhere a sim position is drawn, every generator here paints
+  each authored "pixel" as a 2×2 block directly onto a canvas already sized in
+  final screen pixels — visually identical to "16px art, drawn at exactly 2×,"
+  but needs no second scale factor threaded through the renderers (the change
+  request's own "whichever touches less existing code" escape hatch).
+  `pixelArt: true` in `main.js` keeps every 2×2 block crisp.
+- **`hash.js`** — a deterministic (non-`Math.random`) hash used to pick which
+  ~1-in-10 floor tiles get a crack decal, so the arena looks identical on
+  every launch.
+- **`font.js`** — "Press Start 2P" (OFL, via Google Fonts in `index.html`),
+  loaded and awaited in `BootScene` before any other scene is created, so no
+  scene ever draws with a blurry fallback font on its first frame.
+
+### Texture key contract
+
+```
+player-{red|blue|green|ghost}          frames: {idle|walk}-{down|up|side}-{0|1}
+tile-floorA / tile-floorB / tile-crack
+wall
+cover
+platform
+torch-0 / torch-1 / torch-2
+proj-{red|blue|green}
+slash-{red|blue|green}-{dir}-{0|1|2}   dir: one of the 8 compass points (E,SE,S,SW,W,NW,N,NE)
+shield-{red|blue|green}-{0|1}
+particle-{red|blue|green}
+```
+
+Everything outside `render/art/` only ever addresses textures by these keys —
+swap the generators for `scene.load.spritesheet`/`scene.load.image` calls under
+the same keys and no other file needs to change.
+
+**Deviation from the brief's literal key contract:** slash and shield textures
+are keyed `slash-{color}-{dir}-{frame}` / `shield-{color}-{frame}` (baked
+per-owner-color), not the color-less `slash-{dir}-{frame}` the brief lists.
+Baking the owner-color edge directly into the texture (24 slash variants × 3
+colors = 72 textures, generated once at boot, negligible cost) avoids tinting
+the whole sprite with `setTint()` — which would have also tinted the white
+smear fill the brief explicitly wants to stay white.
+
+### Other choices worth flagging
+
+- **8-direction slash "pre-drawn frames," not rotation.** The 8 slash textures
+  per color/frame are baked once at boot with exact vector arc math (Canvas
+  2D `arc()`, snapped to 8 compass directions via `snapToCompassDirection()`)
+  rather than hand-drawn diagonal pixel art. No sprite is ever rotated at
+  render time — `snapToCompassDirection` just picks which of the 8 pre-baked
+  textures to display, matching the brief's intent (no rotation smear) without
+  the fragility of hand-authoring true 45°-rotated pixel art (a square pixel
+  grid only losslessly rotates/reflects in 90° steps, not 45°).
+- **Player sprite anchor.** The brief says "the sprite's body center sits on
+  the sim position." A literal geometric-center anchor on a chibi sprite (huge
+  head, tiny legs/feet) would visually float the body above its own hitbox
+  circle. `playerRenderer.js` anchors near the torso/feet instead (`origin.y
+  = 0.82`) so the character stays visually grounded on the sim position and
+  the drop shadow sits exactly at the sprite's bottom edge.
+- **World margin for the wall ring.** The wall ring is drawn *outside* the
+  24×16 playable area, so the Phaser canvas is 1 tile larger on every side
+  than the sim's arena bounds (`render/coords.js`). Collision/arena bounds in
+  `sim/` are completely unchanged — this only affects where things land on
+  screen. HUD elements are unaffected (they're already screen-space, not
+  world-space).
+- **No external tileset.** The brief's "optional, your call" 0x72 DungeonTileset
+  II was not used — floor/walls/cover/torches are all generated the same way
+  as the characters, so the whole art pass has zero downloaded assets and zero
+  licensing surface to track. `CREDITS.md` is therefore empty/not needed.
+- **Not manually browser-tested.** No headless-browser tool was available in
+  this environment (Playwright's browser download was also blocked — no
+  network egress to its CDN), so this pass is verified by `npm run build`
+  (transforms all 40+ modules cleanly), `npm test` (32/32, unaffected — this
+  PR touches no file under `sim/`/`tests/`/`input/`), and a line-by-line check
+  of every new Phaser API call against `node_modules/phaser/types/phaser.d.ts`.
+  The actual look of the arena, animations and FX timing have **not** been
+  visually confirmed — please screenshot/playtest before merging, per the
+  acceptance criteria's screenshot requirement.
 
 ## Deviations from the brief (flagged, not silently fixed)
 

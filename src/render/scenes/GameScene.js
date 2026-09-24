@@ -4,7 +4,13 @@ import { step } from '../../sim/step.js';
 import { printRoundLog } from '../../sim/log.js';
 import { TICK_RATE } from '../../sim/config/balance.js';
 import { GAMEPAD_BUTTON_A } from '../../input/gamepad.js';
-import { drawStaticArena, drawDynamic, createHud } from '../draw.js';
+import { createArenaRenderer } from '../arenaRenderer.js';
+import { createPlayerRenderer } from '../players/playerRenderer.js';
+import { createFxRenderer } from '../fx/fxRenderer.js';
+import { createHud, updateHud, updateDisconnectBanner } from '../hud.js';
+import { createHitboxOverlay } from '../debug/hitboxOverlay.js';
+import { PALETTE } from '../art/palette.js';
+import { PIXEL_FONT_FAMILY } from '../art/font.js';
 
 const MS_PER_TICK = 1000 / TICK_RATE;
 const MAX_TICKS_PER_FRAME = 6; // clamps the simulation if a frame stalls badly
@@ -25,10 +31,11 @@ export default class GameScene extends Phaser.Scene {
     this.state = createInitialState((Date.now() ^ 0) >>> 0, this.characterIds, this.boostAllocations);
     this.accumulatorMs = 0;
 
-    this.staticGraphics = this.add.graphics();
-    this.dynamicGraphics = this.add.graphics();
-    drawStaticArena(this.staticGraphics);
+    this.arena = createArenaRenderer(this);
+    this.playerRenderer = createPlayerRenderer(this);
+    this.fxRenderer = createFxRenderer(this);
     this.hud = createHud(this);
+    this.hitboxOverlay = createHitboxOverlay(this);
 
     this.keys = this.input.keyboard.addKeys({
       w: Phaser.Input.Keyboard.KeyCodes.W,
@@ -48,11 +55,17 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // Crosshair for the keyboard/mouse-controlled player, in that player's color.
-    this.crosshair = this.add.text(0, 0, '+', { fontFamily: 'monospace', fontSize: '20px', color: '#ffffff' }).setDepth(15);
+    this.crosshair = this.add
+      .text(0, 0, '+', { fontFamily: PIXEL_FONT_FAMILY, fontSize: '16px', color: PALETTE.uiText })
+      .setDepth(10001);
     this.crosshair.setVisible(false);
 
     this.input.keyboard.on('keydown-F1', () => {
       this.deviceManager.toggleDebug();
+    });
+    this.input.keyboard.on('keydown-F3', () => {
+      this.debugHitboxesVisible = !this.debugHitboxesVisible;
+      this.hitboxOverlay.setVisible(this.debugHitboxesVisible);
     });
 
     if (this.input.gamepad) {
@@ -63,8 +76,6 @@ export default class GameScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-SPACE', () => {
       if (this.state.roundState === 'matchOver') this._rematch();
     });
-
-    this.disconnectBannerVisible = false;
   }
 
   _rematch() {
@@ -87,9 +98,13 @@ export default class GameScene extends Phaser.Scene {
     }
     if (ticks === MAX_TICKS_PER_FRAME) this.accumulatorMs = 0; // avoid runaway catch-up
 
-    drawDynamic(this.dynamicGraphics, this.state, this.hud);
+    this.arena.update(this.state.tick);
+    this.playerRenderer.update(this.state);
+    this.fxRenderer.update(this.state);
+    updateHud(this.hud, this.state);
+    updateDisconnectBanner(this.hud, this.deviceManager.disconnectedSlots);
+    this.hitboxOverlay.update(this.state);
     this._updateCrosshair();
-    this._updateDisconnectBanner();
   }
 
   _tick() {
@@ -124,11 +139,5 @@ export default class GameScene extends Phaser.Scene {
     const p = this.input.activePointer;
     this.crosshair.setPosition(p.x - 6, p.y - 10);
     this.crosshair.setVisible(true);
-  }
-
-  _updateDisconnectBanner() {
-    const names = [...this.deviceManager.disconnectedSlots].map((i) => `P${i + 1}`);
-    const msg = names.length ? `${names.join(', ')} controller disconnected` : '';
-    this.hud.disconnectBanner.setText(msg);
   }
 }
