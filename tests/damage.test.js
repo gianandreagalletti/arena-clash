@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { step, newPlayingGame, clearInvuln, makeInput } from './helpers.js';
 import { createInitialState } from '../src/sim/state.js';
-import { ACTIONS, BOOST_BONUS_PER_POINT, CHARACTERS } from '../src/sim/config/balance.js';
+import { ACTIONS, BOOST_BONUS_PER_POINT, CHARACTERS, shootConfigFor } from '../src/sim/config/balance.js';
 
 const neutral = makeInput();
 const shootInput = makeInput({ fire: true, aimX: 1, aimY: 0 });
@@ -17,35 +17,50 @@ function faceOff(state) {
   return state;
 }
 
-test('shoot: a single hit deals exactly the configured Shoot damage (18)', () => {
-  let state = faceOff(newPlayingGame(1, ['sniper', 'berserker', 'summoner']));
-
-  state = step(state, [shootInput, neutral, neutral]);
-  for (let i = 0; i < 29; i++) state = step(state, [neutral, neutral, neutral]);
-
-  assert.strictEqual(ACTIONS.shoot.damage, 18);
-  assert.strictEqual(state.players[1].damageTaken, 18);
-  assert.strictEqual(state.players[1].hp, state.players[1].maxHp - 18);
-});
-
-test('shoot: every character shoots for the same damage', () => {
+test('shoot: one hit deals exactly that character\'s configured Shoot damage', () => {
   for (const characterId of Object.keys(CHARACTERS)) {
-    let state = faceOff(newPlayingGame(2, [characterId, 'berserker', 'summoner']));
+    let state = faceOff(newPlayingGame(1, [characterId, 'berserker', 'summoner']));
 
     state = step(state, [shootInput, neutral, neutral]);
     for (let i = 0; i < 29; i++) state = step(state, [neutral, neutral, neutral]);
 
-    assert.strictEqual(state.players[1].damageTaken, ACTIONS.shoot.damage, `attacker ${characterId}`);
+    const expected = shootConfigFor(characterId).damage;
+    assert.strictEqual(state.players[1].damageTaken, expected, `attacker ${characterId}`);
+    assert.strictEqual(state.players[1].hp, state.players[1].maxHp - expected, `attacker ${characterId}`);
   }
 });
 
-test('shoot: 8 hits kill an unboosted 140 HP target, but not one with +40% HP', () => {
+test('shoot: Sniper hits far harder per shot than the shared baseline', () => {
+  // The identity, asserted as a relationship rather than a literal, so tuning
+  // the exact numbers doesn't silently erase the character's whole point.
+  const sniper = shootConfigFor('sniper');
+  const baseline = ACTIONS.shoot;
+
+  assert.ok(
+    sniper.damage >= baseline.damage * 1.5,
+    `Sniper should hit much harder than baseline, got ${sniper.damage} vs ${baseline.damage}`
+  );
+  assert.ok(
+    sniper.cooldownTicks > baseline.cooldownTicks,
+    `...and pay for it in rate of fire, got ${sniper.cooldownTicks} vs ${baseline.cooldownTicks} ticks`
+  );
+  assert.ok(
+    sniper.projectileSpeedTilesPerSec > baseline.projectileSpeedTilesPerSec,
+    'Sniper rounds should fly faster than baseline'
+  );
+  // Berserker and Summoner stay on the shared baseline.
+  assert.strictEqual(shootConfigFor('berserker').damage, baseline.damage);
+  assert.strictEqual(shootConfigFor('summoner').damage, baseline.damage);
+});
+
+test('shoot: 8 baseline hits kill an unboosted 140 HP target, but not one with +40% HP', () => {
   // 8 shots at 18 dmg = 144 > 140 (unboosted Berserker) but < 196 (+40% HP).
+  // Uses a baseline shooter on purpose — Sniper's numbers are tested above.
   const SHOTS = 8;
   const TICKS = 1 + (SHOTS - 1) * ACTIONS.shoot.cooldownTicks + 30; // last shot + travel
 
   const runFight = (boostAllocations) => {
-    let state = createInitialState(3, ['sniper', 'berserker', 'summoner'], boostAllocations);
+    let state = createInitialState(3, ['berserker', 'berserker', 'summoner'], boostAllocations);
     while (state.roundState === 'countdown') state = step(state, [neutral, neutral, neutral]);
     faceOff(state);
     for (let i = 0; i < TICKS; i++) state = step(state, [shootInput, neutral, neutral]);

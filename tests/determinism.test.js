@@ -17,6 +17,7 @@ function scriptedInputs(tick) {
       fire: tick % 10 === 0,
       slash: tick % 17 === 0,
       shield: tick % 97 === 0,
+      ult: tick % 53 === 0,
     },
     {
       ...NEUTRAL_INPUT,
@@ -27,6 +28,7 @@ function scriptedInputs(tick) {
       fire: tick % 13 === 0,
       slash: tick % 11 === 0,
       shield: tick % 131 === 0,
+      ult: tick % 67 === 0,
     },
     {
       ...NEUTRAL_INPUT,
@@ -37,6 +39,7 @@ function scriptedInputs(tick) {
       fire: tick % 7 === 0,
       slash: tick % 23 === 0,
       shield: tick % 73 === 0,
+      ult: tick % 41 === 0,
     },
   ];
 }
@@ -45,6 +48,12 @@ test('determinism: same seed + same input sequence run twice -> identical final 
   const chars = ['sniper', 'berserker', 'summoner'];
   let a = createInitialState(42, chars);
   let b = createInitialState(42, chars);
+
+  // Pre-charge the Berserker so the nova actually fires inside this window —
+  // otherwise the scripted run never reaches the ult cost and the ability path
+  // (and the dog's seeded RNG alongside it) would go untested here.
+  a.players[1].ultCharge = 100;
+  b.players[1].ultCharge = 100;
 
   for (let tick = 1; tick <= 400; tick++) {
     a = step(a, scriptedInputs(tick));

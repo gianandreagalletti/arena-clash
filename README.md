@@ -1,15 +1,15 @@
 # Arena Clash — Week 1: Core Sim + Basic Combat
 
 A top-down, 3-player free-for-all arena shooter (Soul Knight-style). This is the
-Week 1 MVP: core deterministic simulation, the three shared actions (Shoot /
-Slash / Shield), pre-match boost allocation, round/match flow, and 3-gamepad /
-gamepad+keyboard local play. Abilities, ultimates, the shrinking zone, pickups
-and menus are out of scope this week.
+Week 1 MVP: core deterministic simulation, a shared Shoot/Slash/Shield baseline
+with one distinct identity per character, pre-match boost allocation,
+round/match flow, and 3-gamepad / gamepad+keyboard local play. The shrinking
+zone, pickups and menus are out of scope this week.
 
 ## Combat model
 
-All three characters share the same three actions — the numbers live in
-`ACTIONS` in `src/sim/config/balance.js`:
+The shared baseline every character starts from — the numbers live in `ACTIONS`
+in `src/sim/config/balance.js`:
 
 | Action | Numbers |
 |---|---|
@@ -17,12 +17,44 @@ All three characters share the same three actions — the numbers live in
 | **Slash** | 14 damage, 2.5 hits/s, 1.5 tile reach, 90° frontal arc, one hit per target per swing |
 | **Shield** | 2.0s active, incoming damage −70%, 6.0s cooldown starting when the shield ends; blocks Shoot/Slash while up, movement still allowed |
 
-Characters differ **only** by HP and Speed:
+Shoot/Slash/Shield above are the **baseline**. Each character starts from it and
+then diverges — see "Character identity" below.
 
 | Stat | Sniper | Berserker | Summoner |
 |---|---|---|---|
 | HP | 80 | 140 | 100 |
 | Speed (tiles/s) | 4.5 | 5.0 | 4.2 |
+
+## Character identity
+
+Every number here is a **first-pass guess, not final balance**. They all live as
+named values under `CHARACTERS[id]` in `balance.js` — nothing is hardcoded in sim
+logic — specifically so they can be tuned without touching code.
+
+**Sniper — high damage, low fire rate.** Overrides the shared Shoot baseline:
+36 damage (2×) every 1.0s (½ rate), projectile 22 tiles/s. Nominal DPS therefore
+lands on the same 36/s as everyone else, but delivered in fewer, heavier hits, so
+missing hurts. Keeps the lowest HP (80). No ability — its identity is statistical.
+A test pins sustained DPS to within ±20% of the baseline character, so retuning
+either number tells you immediately how far the character drifted.
+
+**Berserker — telegraphed AoE nova** (`ult` button). 45 damage to everything
+within 3 tiles, after a 0.5s windup during which the Berserker is slowed to 50%.
+Damage lands **once**, at the end of the windup, on whoever is inside the radius
+*at that moment* — so walking out genuinely saves you. Costs 50 ult charge, using
+the meter that was already being tracked rather than a second resource system.
+The windup is a real sim state (`player.charging === 'nova'`), so a renderer can
+draw a telegraph and a future interrupt mechanic has something to cancel.
+
+**Summoner — killable dog** (`ult` button). 40 HP, bites for 8 in a 0.9-tile
+reach every 0.8s, moves at 5.5 tiles/s. One alive at a time; pressing summon
+again while it lives does nothing. It takes damage from projectiles and slashes
+through the exact same `applyDamage` path a player does, and when it dies the
+Summoner waits 5s before re-summoning. Movement is a random walk biased toward
+the nearest enemy (`trackingBias`, 0 = pure random, 1 = direct chase; currently
+0.5), driven by the seeded RNG in state, so a given seed always replays the same
+path. Damage it deals is credited to the Summoner's ledger; damage dealt *to* it
+grants no ult charge, so a respawning dog can't be farmed as a charge battery.
 
 ### Pre-match boost allocation
 
@@ -59,8 +91,9 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
 - **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc) as 1px lines over the art, plus the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
-- **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, Y reserved (future ultimate).
-- **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, R reserved (future ultimate).
+- **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, **Y** character ability.
+- **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, **R** character ability.
+- **Character ability (Y / R):** Berserker casts the nova (costs ult charge), Summoner summons its dog. Sniper has none. **Neither is drawn yet** — see the note in "Deviations".
 - A round ends when one player is left standing; first to 3 round wins takes the match. At the match-over screen, press **A** (gamepad) or **Space** to rematch (same boost allocation).
 
 ### Character selection (hardcoded this week)
@@ -83,7 +116,9 @@ Runs the offline sim test suite (Node's built-in `node:test`, no browser, no ext
 test-runner dependency) against `tests/*.test.js`. Covers determinism, Shoot
 damage (boosted and unboosted), fire rate, Slash arc (for every character),
 Shield (70% reduction, expiry, cooldown lockout, action lockout), boost
-multipliers, projectile flight (unlimited range, constant velocity into cover,
+multipliers, character identity (Sniper DPS band, nova radius/windup/cost,
+dog HP, cap, respawn cooldown and deterministic path), projectile flight
+(unlimited range, constant velocity into cover,
 no aim assist on either input device, point-blank wall), mouse aim (screen →
 world round-trip across window sizes, aspect ratios, letterboxing and camera
 zoom; clicking a target's drawn pixel hits it), collision, spawn
@@ -94,7 +129,8 @@ or calls `Math.random`.
 ## Changing balance values
 
 Every gameplay number lives in **`src/sim/config/balance.js`** — `ACTIONS`
-(Shoot/Slash/Shield), `CHARACTERS` (HP + speed only), boost points and per-point
+(the shared baseline), `CHARACTERS` (HP, speed and each character's own
+overrides/abilities), boost points and per-point
 bonuses, aim assist, invuln duration, round/match timers, ult charge formula.
 Nothing else in `src/sim/` hardcodes a number. `src/sim/characters/*.js` are thin
 re-exports of `balance.js`'s `CHARACTERS` entries (kept as separate files
@@ -247,6 +283,22 @@ smear fill the brief explicitly wants to stay white.
   acceptance criteria's screenshot requirement.
 
 ## Deviations from the brief (flagged, not silently fixed)
+
+- **The dog and the nova are invisible.** The character-differentiation brief
+  said not to touch `render/`, so nothing draws the dog, the nova windup
+  telegraph or the blast. Both abilities are fully live in the sim — the dog
+  moves, bites and dies; the nova charges and detonates — but on screen the dog
+  simply isn't there and the Berserker gives no visual tell. That last part
+  undercuts the whole design intent of a *telegraphed* AoE ("so it can be dodged
+  or punished"): right now it can't be dodged, because it can't be seen. The sim
+  exposes everything a renderer needs (`state.dogs`, `state.novaBlasts`,
+  `player.charging`); wiring it up is a render-side follow-up.
+- **The ability trigger needed an input change.** The brief asked for two new
+  abilities but also froze `input/`. The `ult` field had been deliberately
+  removed from the InputFrame in an earlier CR, so there was no way to fire
+  either ability. Resolved (with the user) by wiring the two buttons that were
+  already read and already documented as "reserved (future ultimate)": gamepad
+  **Y** and keyboard **R**.
 
 - **Cover block shape/placement.** The brief asks for 6 cover blocks with
   "120° rotational symmetry." True continuous rotation of an axis-aligned 2×1

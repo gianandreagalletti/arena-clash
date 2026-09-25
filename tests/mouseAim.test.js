@@ -10,7 +10,7 @@ import {
 } from '../src/render/coords.js';
 import { readKeyboardMouseFrame } from '../src/input/keyboardMouse.js';
 import { readGamepadFrame } from '../src/input/gamepad.js';
-import { ACTIONS } from '../src/sim/config/balance.js';
+import { shootConfigFor } from '../src/sim/config/balance.js';
 
 const NO_KEYS = { w: false, a: false, s: false, d: false, q: false, e: false, r: false };
 
@@ -130,7 +130,7 @@ test('clicking the pixel a target is drawn on produces an aim vector that hits i
 
     assert.strictEqual(
       state.players[1].damageTaken,
-      ACTIONS.shoot.damage,
+      shootConfigFor(state.players[0].characterId).damage,
       `${config.name}: the shot should land on the clicked target`
     );
   }

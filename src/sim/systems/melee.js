@@ -1,7 +1,7 @@
 // Slash: instantaneous frontal-arc melee attack. Shared by all characters.
 
 import { ACTIONS } from '../config/balance.js';
-import { applyDamage, isUntargetable } from './damage.js';
+import { applyDamage, isUntargetable, damageableEntities, belongsTo } from './damage.js';
 
 function normalizeAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -21,8 +21,8 @@ export function performMelee(state, attacker) {
   const halfArcRad = ((arcDegrees / 2) * Math.PI) / 180;
   const aimAngle = Math.atan2(attacker.aimY, attacker.aimX);
 
-  for (const target of state.players) {
-    if (target.id === attacker.id) continue;
+  for (const target of damageableEntities(state)) {
+    if (belongsTo(target, attacker.id)) continue;
     if (isUntargetable(state, target)) continue;
 
     const dx = target.x - attacker.x;

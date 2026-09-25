@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import { createInitialState } from '../src/sim/state.js';
 import { step, neutralInputs, makeInput, clearInvuln } from './helpers.js';
 import { beginRound } from '../src/sim/systems/round.js';
-import { ACTIONS, CHARACTERS, BOOST_BONUS_PER_POINT, BOOST_POINTS_PER_PLAYER } from '../src/sim/config/balance.js';
+import {
+  ACTIONS,
+  CHARACTERS,
+  BOOST_BONUS_PER_POINT,
+  BOOST_POINTS_PER_PLAYER,
+  shootConfigFor,
+} from '../src/sim/config/balance.js';
 import {
   createAllocation,
   addPoint,
@@ -31,13 +37,16 @@ test('boost: points apply the documented multiplier to each stat', () => {
     p1.speedTilesPerSec,
     CHARACTERS.berserker.speedTilesPerSec * (1 + BOOST_BONUS_PER_POINT.speed * 4)
   );
-  assert.strictEqual(p1.shootDamage, ACTIONS.shoot.damage * (1 + BOOST_BONUS_PER_POINT.shootDmg * 3));
+  assert.strictEqual(
+    p1.shootDamage,
+    shootConfigFor(p1.characterId).damage * (1 + BOOST_BONUS_PER_POINT.shootDmg * 3)
+  );
   assert.strictEqual(p1.slashDamage, ACTIONS.slash.damage * (1 + BOOST_BONUS_PER_POINT.slashDmg * 3));
 
   assert.strictEqual(p2.slashDamage, ACTIONS.slash.damage * (1 + BOOST_BONUS_PER_POINT.slashDmg * 10));
   // Untouched categories stay at base.
   assert.strictEqual(p2.maxHp, CHARACTERS.summoner.hp);
-  assert.strictEqual(p2.shootDamage, ACTIONS.shoot.damage);
+  assert.strictEqual(p2.shootDamage, shootConfigFor(p2.characterId).damage);
 });
 
 test('boost: zero/omitted allocation leaves every stat at base', () => {
@@ -46,7 +55,7 @@ test('boost: zero/omitted allocation leaves every stat at base', () => {
     const def = CHARACTERS[p.characterId];
     assert.strictEqual(p.maxHp, def.hp);
     assert.strictEqual(p.speedTilesPerSec, def.speedTilesPerSec);
-    assert.strictEqual(p.shootDamage, ACTIONS.shoot.damage);
+    assert.strictEqual(p.shootDamage, shootConfigFor(p.characterId).damage);
     assert.strictEqual(p.slashDamage, ACTIONS.slash.damage);
     assert.deepStrictEqual(p.boosts, { hp: 0, speed: 0, shootDmg: 0, slashDmg: 0 });
   });
@@ -115,7 +124,7 @@ test('boost: shoot damage points reach actual projectile damage', () => {
   state = step(state, [shoot, neutral, neutral]);
   for (let i = 0; i < 29; i++) state = step(state, [neutral, neutral, neutral]);
 
-  const expected = ACTIONS.shoot.damage * (1 + BOOST_BONUS_PER_POINT.shootDmg * points);
+  const expected = shootConfigFor(CHARS[0]).damage * (1 + BOOST_BONUS_PER_POINT.shootDmg * points);
   assert.strictEqual(state.players[1].damageTaken, expected);
 });
 

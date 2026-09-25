@@ -1,6 +1,7 @@
 import {
   CHARACTERS,
   ACTIONS,
+  shootConfigFor,
   PLAYER_RADIUS_TILES,
   ROUND_COUNTDOWN_TICKS,
   BOOST_CATEGORIES,
@@ -45,10 +46,13 @@ function createPlayer(index, characterId, rawBoosts) {
   const boosts = normalizeBoosts(rawBoosts, index);
 
   // Boosted stats are derived ONCE here and stay fixed for the whole match.
+  // Per-character Shoot overrides are folded in first, boosts on top.
   const maxHp = def.hp * boostMultiplier(boosts, 'hp');
+  const shoot = shootConfigFor(characterId);
 
   return {
     id: index,
+    kind: 'player', // damageable-entity tag, see systems/damage.js
     characterId,
     boosts,
     x: spawn.x,
@@ -59,7 +63,9 @@ function createPlayer(index, characterId, rawBoosts) {
     hp: maxHp,
     maxHp,
     speedTilesPerSec: def.speedTilesPerSec * boostMultiplier(boosts, 'speed'),
-    shootDamage: ACTIONS.shoot.damage * boostMultiplier(boosts, 'shootDmg'),
+    shootDamage: shoot.damage * boostMultiplier(boosts, 'shootDmg'),
+    shootCooldownMaxTicks: shoot.cooldownTicks,
+    shootProjectileSpeed: shoot.projectileSpeedTilesPerSec,
     slashDamage: ACTIONS.slash.damage * boostMultiplier(boosts, 'slashDmg'),
     alive: true,
     shootCooldownTicks: 0,
@@ -68,6 +74,10 @@ function createPlayer(index, characterId, rawBoosts) {
     shieldReadyAtTick: 0,
     invulnUntilTick: 0,
     ultCharge: 0,
+    // Ability state (per-round; reset by systems/round.js).
+    charging: null, // null | 'nova' — a real sim state, not just a render cue
+    chargeReleaseTick: 0,
+    dogReadyAtTick: 0, // Summoner only: set when its dog dies
     roundsWon: 0,
     // Per-round stats (reset by systems/round.js at the start of each round).
     damageDealt: 0,
@@ -106,11 +116,14 @@ export function createInitialState(seed, characterIds, boostAllocations) {
     players: characterIds.map((id, i) => createPlayer(i, id, boostAllocations && boostAllocations[i])),
     projectiles: [],
     nextProjectileId: 1,
+    dogs: [], // Summoner minions — damageable entities, see systems/dog.js
+    nextDogId: 1,
     logs: [],
     pendingLogPrint: null, // set by round.js when a round just ended; caller should print + clear
     // Per-tick transient data for rendering (cleared every tick by step()):
     meleeSwings: [],
     explosions: [],
+    novaBlasts: [],
     voidRoundThisTick: false,
   };
 }

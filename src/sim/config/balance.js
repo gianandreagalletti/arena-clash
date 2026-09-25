@@ -62,8 +62,10 @@ export const ULT_CHARGE_CARRY_FRACTION = 0.5; // fraction carried into the next 
 export const ACTIONS = {
   shoot: {
     damage: 18,
-    shotsPerSec: 2,
-    cooldownTicks: secToTicks(1 / 2), // 30 ticks = one shot every 0.5s
+    // cooldownTicks is the single source of truth for rate of fire — a
+    // separate shotsPerSec field would silently go stale the moment a
+    // character overrides the cooldown (Sniper does).
+    cooldownTicks: secToTicks(1 / 2), // 30 ticks = 2 shots/s
     projectileSpeedTilesPerSec: 14,
     // null = unlimited: a shot flies until it hits a player, cover or an arena
     // edge. The key is kept so a finite range can be re-enabled later.
@@ -107,22 +109,48 @@ export const BOOST_BONUS_PER_POINT = {
 };
 
 // --- Characters ---
-// Characters differ ONLY by HP and Speed. Everything else (id/name/color) is
-// identity/presentation, and all combat numbers live in ACTIONS above.
+// Every character starts from the shared ACTIONS baseline above. A `shoot`
+// block here overrides that baseline for one character; `nova` / `dog` are
+// that character's unique ability.
+//
+// EVERY NUMBER IN THIS BLOCK IS A FIRST-PASS GUESS, NOT FINAL BALANCE. They
+// are named config specifically so they can be tuned without touching sim
+// logic. See README "Character identity" for the reasoning behind each.
 export const CHARACTERS = {
   sniper: {
     id: 'sniper',
     name: 'Sniper',
     color: '#e74c3c', // red
-    hp: 80,
+    hp: 80, // deliberately the squishiest: high reward, high punish
     speedTilesPerSec: 4.5,
+    // Trades rate of fire for damage per hit: missing should hurt.
+    // TUNABLE: damage x2 and cooldown x2 keep nominal DPS at the 36/s baseline
+    // (36 dmg every 1.0s vs 18 every 0.5s). That parity is what the DPS-band
+    // test pins; shift either number and the test will tell you how far the
+    // character drifted from baseline.
+    shoot: {
+      damage: 36,
+      cooldownTicks: secToTicks(1.0),
+      projectileSpeedTilesPerSec: 22, // reads as a rifle, and shortens lead time
+    },
   },
   berserker: {
     id: 'berserker',
     name: 'Berserker',
     color: '#3498db', // blue
-    hp: 140,
+    hp: 140, // tanky, because the nova forces him into melee range
     speedTilesPerSec: 5.0,
+    // Telegraphed AoE nova: a windup the victims can see and walk out of, and
+    // that the Berserker can be punished for starting. Paid for with the ult
+    // charge meter that was already being tracked (see ULT_CHARGE_* above) —
+    // no second resource system.
+    nova: {
+      radiusTiles: 3, // measured center-to-center, inclusive at exactly this
+      damage: 45,
+      windupTicks: secToTicks(0.5),
+      ultCost: 50, // half a full meter
+      windupMoveMultiplier: 0.5, // slowed while charging, so the tell matters
+    },
   },
   summoner: {
     id: 'summoner',
@@ -130,7 +158,27 @@ export const CHARACTERS = {
     color: '#2ecc71', // green
     hp: 100,
     speedTilesPerSec: 4.2,
+    // A killable pressure tool, not a free permanent annoyance: one at a time,
+    // takes damage like any other entity, and costs the Summoner tempo when it
+    // dies.
+    dog: {
+      hp: 40,
+      damage: 8,
+      attackRangeTiles: 0.9,
+      attackCooldownTicks: secToTicks(0.8),
+      speedTilesPerSec: 5.5, // faster than any player, but has to find them
+      radiusTiles: 0.3,
+      // 0 = pure random walk, 1 = direct chase. Around half keeps it reading as
+      // an erratic animal rather than a heat-seeking missile.
+      trackingBias: 0.5,
+      respawnCooldownTicks: secToTicks(5), // starts when the dog dies
+    },
   },
 };
 
 export const CHARACTER_IDS = Object.keys(CHARACTERS);
+
+/** The Shoot config for one character: the shared baseline with that character's overrides applied. */
+export function shootConfigFor(characterId) {
+  return { ...ACTIONS.shoot, ...(CHARACTERS[characterId].shoot || {}) };
+}

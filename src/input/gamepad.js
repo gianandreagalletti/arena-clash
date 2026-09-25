@@ -1,6 +1,6 @@
 // Maps a Phaser 3 Gamepad instance (Xbox-standard layout) to an InputFrame.
 // Left stick: move · Right stick: aim (holds last direction when idle) ·
-// RT: Shoot (hold) · RB: Slash · LB: Shield · Y: reserved (future ultimate).
+// RT: Shoot (hold) · RB: Slash · LB: Shield · Y: character ability (ult).
 
 import { STICK_DEADZONE } from '../sim/config/balance.js';
 
@@ -16,7 +16,7 @@ function applyDeadzone(v) {
  */
 export function readGamepadFrame(pad) {
   if (!pad) {
-    return { moveX: 0, moveY: 0, aimX: 0, aimY: 0, fire: false, slash: false, shield: false };
+    return { moveX: 0, moveY: 0, aimX: 0, aimY: 0, fire: false, slash: false, shield: false, ult: false };
   }
 
   return {
@@ -27,6 +27,7 @@ export function readGamepadFrame(pad) {
     fire: pad.R2 > 0.5, // RT
     slash: !!pad.R1, // RB
     shield: !!pad.L1, // LB
+    ult: !!pad.Y, // character ability
   };
 }
 

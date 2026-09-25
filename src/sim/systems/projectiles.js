@@ -16,7 +16,7 @@ import {
   AIM_ASSIST_MAX_BEND_DEGREES,
 } from '../config/balance.js';
 import { COVER_BLOCKS, circleIntersectsRect } from '../arena.js';
-import { applyDamage, isUntargetable } from './damage.js';
+import { applyDamage, isUntargetable, damageableEntities, belongsTo } from './damage.js';
 
 const SUBSTEPS = 4; // swept-ish movement so fast projectiles don't tunnel through thin cover
 
@@ -97,8 +97,9 @@ export function spawnProjectile(state, owner) {
     x: owner.x,
     y: owner.y,
     // Written once, here. Nothing else ever touches vx/vy.
-    vx: aimDir.x * shoot.projectileSpeedTilesPerSec,
-    vy: aimDir.y * shoot.projectileSpeedTilesPerSec,
+    // Speed is the owner's (Sniper's rounds fly faster), resolved in state.js.
+    vx: aimDir.x * owner.shootProjectileSpeed,
+    vy: aimDir.y * owner.shootProjectileSpeed,
     radius: shoot.projectileRadiusTiles,
     damage: owner.shootDamage, // boost-derived, per player
     remainingRangeTiles: shoot.rangeTiles, // null = unlimited
@@ -115,8 +116,8 @@ export function spawnProjectile(state, owner) {
 function explode(state, proj, x, y) {
   state.explosions.push({ x, y, radius: proj.explodeRadiusTiles, tick: state.tick, ownerId: proj.ownerId });
   const owner = state.players.find((p) => p.id === proj.ownerId);
-  for (const target of state.players) {
-    if (target.id === proj.ownerId) continue; // no self-damage
+  for (const target of damageableEntities(state)) {
+    if (belongsTo(target, proj.ownerId)) continue; // no self-damage
     if (isUntargetable(state, target)) continue;
     const dist = Math.hypot(target.x - x, target.y - y);
     if (dist <= proj.explodeRadiusTiles + target.radiusTiles) {
@@ -163,9 +164,9 @@ export function updateProjectiles(state) {
       }
       if (stopped) break;
 
-      // Players (skip owner and untargetable players).
-      for (const target of state.players) {
-        if (target.id === proj.ownerId) continue;
+      // Players and dogs alike (skipping the shooter's own entities).
+      for (const target of damageableEntities(state)) {
+        if (belongsTo(target, proj.ownerId)) continue;
         if (isUntargetable(state, target)) continue;
         const dist = Math.hypot(target.x - px, target.y - py);
         if (dist <= proj.radius + target.radiusTiles) {

@@ -6,9 +6,11 @@ import { applyMovement } from './systems/movement.js';
 import { performMelee } from './systems/melee.js';
 import { spawnProjectile, updateProjectiles } from './systems/projectiles.js';
 import { tickCountdown, checkRoundEnd, tickRecap } from './systems/round.js';
+import { canStartNova, startNova, tickNova, moveMultiplierFor } from './systems/nova.js';
+import { canSummonDog, summonDog, updateDogs } from './systems/dog.js';
 
-// `ult` has no button yet (the charge meter is still tracked in state), so the
-// frame carries exactly the three live actions: Shoot, Slash, Shield.
+// `ult` is the character's unique ability: Berserker nova, Summoner dog summon.
+// Sniper has none (its identity is statistical), so the button does nothing.
 export const NEUTRAL_INPUT = Object.freeze({
   moveX: 0,
   moveY: 0,
@@ -17,6 +19,7 @@ export const NEUTRAL_INPUT = Object.freeze({
   fire: false,
   slash: false,
   shield: false,
+  ult: false,
 });
 
 function cloneState(state) {
@@ -40,8 +43,9 @@ function tickPlaying(state, inputs) {
     }
     // else: keep the previous aim direction (idle stick / mouse didn't move).
 
-    // Movement is allowed even while shielded.
-    applyMovement(player, input, player.speedTilesPerSec);
+    // Movement is allowed even while shielded, but a nova windup slows it so
+    // the telegraph actually costs the Berserker something.
+    applyMovement(player, input, player.speedTilesPerSec * moveMultiplierFor(player));
 
     // Shield: its 6s cooldown starts when the shield ends, so shieldReadyAtTick
     // alone gates both re-triggering mid-shield and pressing during cooldown.
@@ -50,19 +54,29 @@ function tickPlaying(state, inputs) {
       player.shieldReadyAtTick = player.shieldActiveUntilTick + ACTIONS.shield.cooldownTicks;
     }
 
+    // Ult button: whichever unique ability this character has.
+    if (input.ult) {
+      if (canStartNova(state, player)) startNova(state, player);
+      else if (canSummonDog(state, player)) summonDog(state, player);
+    }
+
     const shielded = state.tick < player.shieldActiveUntilTick;
-    if (!shielded) {
+    const charging = player.charging !== null;
+    if (!shielded && !charging) {
       if (input.fire && player.shootCooldownTicks <= 0) {
         spawnProjectile(state, player);
-        player.shootCooldownTicks = ACTIONS.shoot.cooldownTicks;
+        player.shootCooldownTicks = player.shootCooldownMaxTicks;
       }
       if (input.slash && player.slashCooldownTicks <= 0) {
         performMelee(state, player);
         player.slashCooldownTicks = ACTIONS.slash.cooldownTicks;
       }
     }
+
+    tickNova(state, player);
   }
 
+  updateDogs(state);
   updateProjectiles(state);
   checkRoundEnd(state);
 }
@@ -77,6 +91,7 @@ export function step(state, inputs) {
   next.tick += 1;
   next.meleeSwings = [];
   next.explosions = [];
+  next.novaBlasts = [];
   next.pendingLogPrint = null;
   next.voidRoundThisTick = false;
 

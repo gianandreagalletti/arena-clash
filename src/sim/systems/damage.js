@@ -1,4 +1,12 @@
 // Central damage application: HP, ult charge, elimination bookkeeping, no self-damage.
+//
+// Works on any "damageable entity", tagged with `kind`:
+//   'player' — full path: spawn invuln, Shield reduction, damage stats, ult
+//              charge, elimination credit.
+//   'dog'    — Summoner minion: HP and death only. It has no invuln, no shield
+//              and no meters of its own.
+// Both go through this one function on purpose: the dog is hit by exactly the
+// same projectile/slash code paths a player is.
 
 import {
   ACTIONS,
@@ -15,51 +23,85 @@ function clampUlt(v) {
 
 /** True while the player's Shield is up (damage reduced, not blocked entirely). */
 export function isShielded(state, player) {
-  return state.tick < player.shieldActiveUntilTick;
+  return player.kind === 'player' && state.tick < player.shieldActiveUntilTick;
+}
+
+/** The player who should be credited for damage dealt by `source` (a dog credits its owner). */
+function creditFor(state, source) {
+  if (!source) return null;
+  if (source.kind === 'player') return source;
+  return state.players.find((p) => p.id === source.ownerId) || null;
+}
+
+/** True if `a` and `b` are the same entity, or a player and their own dog. */
+function isFriendly(a, b) {
+  if (!a || !b) return false;
+  const aOwner = a.kind === 'dog' ? a.ownerId : a.id;
+  const bOwner = b.kind === 'dog' ? b.ownerId : b.id;
+  return aOwner === bOwner;
 }
 
 /**
- * Applies damage from `sourcePlayer` to `targetPlayer`. No-ops if the target is
- * invulnerable, dead, or the target IS the source (no self-damage).
+ * Applies damage from `source` to `target`. No-ops if the target is dead, the
+ * amount is non-positive, the two belong to the same player (no self-damage,
+ * and no shooting your own dog), or the target is spawn-invulnerable.
  *
  * An active Shield reduces the incoming amount before anything else, so HP,
  * damage-dealt/taken stats and ult charge all reflect the damage that actually
  * landed.
  */
-export function applyDamage(state, targetPlayer, amount, sourcePlayer) {
-  if (!targetPlayer.alive) return;
-  if (sourcePlayer && sourcePlayer.id === targetPlayer.id) return;
-  if (state.tick < targetPlayer.invulnUntilTick) return;
+export function applyDamage(state, target, amount, source) {
+  if (!target.alive) return;
   if (amount <= 0) return;
+  if (isFriendly(target, source)) return;
+  if (target.kind === 'player' && state.tick < target.invulnUntilTick) return;
 
-  const effective = isShielded(state, targetPlayer)
-    ? amount * (1 - ACTIONS.shield.damageReduction)
-    : amount;
+  const effective = isShielded(state, target) ? amount * (1 - ACTIONS.shield.damageReduction) : amount;
 
-  targetPlayer.hp = Math.max(0, targetPlayer.hp - effective);
-  targetPlayer.damageTaken += effective;
-  targetPlayer.ultCharge = clampUlt(targetPlayer.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_TAKEN);
+  target.hp = Math.max(0, target.hp - effective);
 
-  if (state.tick - state.roundStartTick < FIRST_30S_WINDOW_TICKS) {
-    targetPlayer.damageTakenFirst30s = true;
+  if (target.kind === 'player') {
+    target.damageTaken += effective;
+    target.ultCharge = clampUlt(target.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_TAKEN);
+
+    if (state.tick - state.roundStartTick < FIRST_30S_WINDOW_TICKS) {
+      target.damageTakenFirst30s = true;
+    }
   }
 
-  if (sourcePlayer) {
-    sourcePlayer.damageDealt += effective;
-    sourcePlayer.ultCharge = clampUlt(sourcePlayer.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_DEALT);
+  // Only damage to PLAYERS feeds the attacker's meters — otherwise a
+  // respawning dog would be a free ult-charge farm.
+  const credit = creditFor(state, source);
+  if (credit && target.kind === 'player') {
+    credit.damageDealt += effective;
+    credit.ultCharge = clampUlt(credit.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_DEALT);
   }
 
-  if (targetPlayer.hp <= 0 && targetPlayer.alive) {
-    targetPlayer.alive = false;
-    targetPlayer.deathTick = state.tick;
-    if (sourcePlayer && sourcePlayer.alive) {
-      sourcePlayer.eliminations += 1;
-      sourcePlayer.ultCharge = clampUlt(sourcePlayer.ultCharge + ULT_CHARGE_PER_ELIMINATION);
+  if (target.hp <= 0 && target.alive) {
+    target.alive = false;
+    if (target.kind === 'player') {
+      target.deathTick = state.tick;
+      target.charging = null; // a player killed mid-windup never releases it
+      if (credit && credit.alive) {
+        credit.eliminations += 1;
+        credit.ultCharge = clampUlt(credit.ultCharge + ULT_CHARGE_PER_ELIMINATION);
+      }
     }
   }
 }
 
-/** True if `player` cannot currently be targeted (dead or spawn-invulnerable). */
-export function isUntargetable(state, player) {
-  return !player.alive || state.tick < player.invulnUntilTick;
+/** True if `entity` cannot currently be targeted (dead, or a spawn-invulnerable player). */
+export function isUntargetable(state, entity) {
+  if (!entity.alive) return true;
+  return entity.kind === 'player' && state.tick < entity.invulnUntilTick;
+}
+
+/** Every entity a projectile or slash can hit this tick: players and live dogs. */
+export function damageableEntities(state) {
+  return [...state.players, ...state.dogs];
+}
+
+/** True if `entity` belongs to the player with id `playerId` (that player, or their dog). */
+export function belongsTo(entity, playerId) {
+  return entity.kind === 'dog' ? entity.ownerId === playerId : entity.id === playerId;
 }

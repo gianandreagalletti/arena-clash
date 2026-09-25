@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { step, newPlayingGame, clearInvuln, makeInput } from './helpers.js';
 import { COVER_BLOCKS, closestPointOnRect } from '../src/sim/arena.js';
-import { ACTIONS, PLAYER_RADIUS_TILES } from '../src/sim/config/balance.js';
+import { ACTIONS, PLAYER_RADIUS_TILES, shootConfigFor } from '../src/sim/config/balance.js';
 import { readGamepadFrame } from '../src/input/gamepad.js';
 import { readKeyboardMouseFrame } from '../src/input/keyboardMouse.js';
 
 const neutral = makeInput();
-const SPEED = ACTIONS.shoot.projectileSpeedTilesPerSec;
+// Every test here shoots as the Sniper (player 0 of the default lineup), so
+// expectations come from ITS resolved config, not the shared baseline.
+const SNIPER = shootConfigFor('sniper');
+const SPEED = SNIPER.projectileSpeedTilesPerSec;
 
 /** Moves the two non-shooting players far out of the way so tests are about geometry only. */
 function clearBystanders(state, ...positions) {
@@ -34,13 +37,15 @@ test('projectile range: a target 20 tiles away in a clear line still gets hit', 
   state = step(state, [fire, neutral, neutral]);
   for (let i = 0; i < 120; i++) state = step(state, [neutral, neutral, neutral]);
 
-  assert.strictEqual(state.players[1].damageTaken, ACTIONS.shoot.damage);
+  assert.strictEqual(state.players[1].damageTaken, SNIPER.damage);
 });
 
 test('projectile range: rangeTiles is unlimited, with a lifetime cap as the only leak guard', () => {
   assert.strictEqual(ACTIONS.shoot.rangeTiles, null);
-  // 3s at 14 tiles/s = 42 tiles, well past the arena diagonal (~28.8).
-  const reachTiles = (ACTIONS.shoot.maxLifetimeTicks / 60) * SPEED;
+  // Even the SLOWEST round must outrange the arena diagonal (~28.8 tiles)
+  // within its lifetime, or the cap would start clipping real shots.
+  const slowest = ACTIONS.shoot.projectileSpeedTilesPerSec;
+  const reachTiles = (ACTIONS.shoot.maxLifetimeTicks / 60) * slowest;
   assert.ok(reachTiles > 40, `lifetime cap should never trigger in play, got ${reachTiles} tiles`);
 });
 

@@ -28,6 +28,9 @@ function resetPlayerForRound(player) {
   player.slashCooldownTicks = 0;
   player.shieldActiveUntilTick = 0;
   player.shieldReadyAtTick = 0;
+  player.charging = null;
+  player.chargeReleaseTick = 0;
+  player.dogReadyAtTick = 0; // a fresh round starts with the dog available
   player.invulnUntilTick = 0; // set once the round actually starts playing
   player.damageDealt = 0;
   player.damageTaken = 0;
@@ -44,6 +47,8 @@ export function beginRound(state, { carryUlt }) {
     }
     resetPlayerForRound(player);
   }
+  state.dogs = []; // minions don't survive a round boundary
+  state.projectiles = [];
   state.roundState = 'countdown';
   state.roundStateTimerTicks = ROUND_COUNTDOWN_TICKS;
 }
