@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { step, newPlayingGame, clearInvuln, makeInput } from './helpers.js';
 import { COVER_BLOCKS, closestPointOnRect } from '../src/sim/arena.js';
-import { ACTIONS, TILE_SIZE_PX, PLAYER_RADIUS_TILES } from '../src/sim/config/balance.js';
+import { ACTIONS, PLAYER_RADIUS_TILES } from '../src/sim/config/balance.js';
 import { readGamepadFrame } from '../src/input/gamepad.js';
 import { readKeyboardMouseFrame } from '../src/input/keyboardMouse.js';
 
@@ -89,12 +89,12 @@ test('no aim assist: an opponent 5 degrees off the line does not bend the shot (
   const DIST = 10;
   const rad = (OFFSET_DEG * Math.PI) / 180;
 
-  // A mouse cursor 100px to the right of the player, and a right stick pushed
+  // A crosshair 3 tiles to the right of the player, and a right stick pushed
   // fully right: both mean "aim exactly +x".
   const playerWorld = { x: 2, y: 2 };
   const keyboardFrame = readKeyboardMouseFrame(
     { w: false, a: false, s: false, d: false, q: false, e: false, r: false },
-    { x: playerWorld.x * TILE_SIZE_PX + 100, y: playerWorld.y * TILE_SIZE_PX },
+    { x: playerWorld.x + 3, y: playerWorld.y },
     playerWorld,
     true // left mouse held = Shoot
   );

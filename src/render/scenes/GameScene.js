@@ -9,6 +9,7 @@ import { createPlayerRenderer } from '../players/playerRenderer.js';
 import { createFxRenderer } from '../fx/fxRenderer.js';
 import { createHud, updateHud, updateDisconnectBanner } from '../hud.js';
 import { createHitboxOverlay } from '../debug/hitboxOverlay.js';
+import { screenToWorld, worldToScreenX, worldToScreenY } from '../coords.js';
 import { PALETTE } from '../art/palette.js';
 import { PIXEL_FONT_FAMILY } from '../art/font.js';
 
@@ -83,9 +84,27 @@ export default class GameScene extends Phaser.Scene {
     this.accumulatorMs = 0;
   }
 
-  _pointerScreen() {
-    const p = this.input.activePointer;
-    return { x: p.x, y: p.y };
+  /** The crosshair as a world point, in tiles. The single source for both the sim and the drawn crosshair. */
+  _aimWorld() {
+    return screenToWorld(this.input.activePointer);
+  }
+
+  /** Which slot the keyboard/mouse drives, or -1. */
+  _keyboardMouseSlot() {
+    return this.deviceManager.debugMode
+      ? this.deviceManager.debugPlayerIndex
+      : this.deviceManager.slots.findIndex((s) => s && s.kind === 'keyboardMouse');
+  }
+
+  /** Aim-chain markers for the F3 overlay, or null when nobody is on mouse aim. */
+  _aimDebugInfo() {
+    const slot = this._keyboardMouseSlot();
+    if (slot === -1) return null;
+    return {
+      player: this.state.players[slot],
+      aimWorld: this._aimWorld(),
+      pointer: this.input.activePointer,
+    };
   }
 
   update(time, delta) {
@@ -103,7 +122,7 @@ export default class GameScene extends Phaser.Scene {
     this.fxRenderer.update(this.state);
     updateHud(this.hud, this.state);
     updateDisconnectBanner(this.hud, this.deviceManager.disconnectedSlots);
-    this.hitboxOverlay.update(this.state);
+    this.hitboxOverlay.update(this.state, this._aimDebugInfo());
     this._updateCrosshair();
   }
 
@@ -119,7 +138,7 @@ export default class GameScene extends Phaser.Scene {
       r: this.keys.r.isDown,
     };
     const gamepadList = this.input.gamepad?.gamepads || [];
-    const frames = this.deviceManager.buildFrames(gamepadList, keys, this._pointerScreen(), this.mouseDown, playersWorld);
+    const frames = this.deviceManager.buildFrames(gamepadList, keys, this._aimWorld(), this.mouseDown, playersWorld);
 
     const prevLogCount = this.state.logs.length;
     this.state = step(this.state, frames);
@@ -129,15 +148,15 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _updateCrosshair() {
-    const kmSlot = this.deviceManager.debugMode
-      ? this.deviceManager.debugPlayerIndex
-      : this.deviceManager.slots.findIndex((s) => s && s.kind === 'keyboardMouse');
-    if (kmSlot === -1) {
+    if (this._keyboardMouseSlot() === -1) {
       this.crosshair.setVisible(false);
       return;
     }
-    const p = this.input.activePointer;
-    this.crosshair.setPosition(p.x - 6, p.y - 10);
+    // Drawn by converting the SAME world point the sim aims at back to screen,
+    // rather than from raw pointer pixels — so the crosshair and the shot can
+    // never disagree, whatever happens to canvas scaling or the camera.
+    const aim = this._aimWorld();
+    this.crosshair.setPosition(worldToScreenX(aim.x) - 6, worldToScreenY(aim.y) - 10);
     this.crosshair.setVisible(true);
   }
 }

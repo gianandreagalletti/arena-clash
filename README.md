@@ -58,7 +58,7 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - Boost screen: **Gamepad** d-pad/left stick to pick a category, **A** add a point, **B** remove, **Start** to ready up (press again to un-ready). **Keyboard:** Up/Down to pick, Right to add, Left to remove, **Enter** to ready. The match starts when all three are ready.
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
-- **F3** (in-match) toggles a hitbox overlay: draws the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc) as 1px lines over the art, to check art/hitbox alignment at a glance.
+- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc) as 1px lines over the art, plus the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
 - **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, Y reserved (future ultimate).
 - **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, R reserved (future ultimate).
 - A round ends when one player is left standing; first to 3 round wins takes the match. At the match-over screen, press **A** (gamepad) or **Space** to rematch (same boost allocation).
@@ -84,7 +84,9 @@ test-runner dependency) against `tests/*.test.js`. Covers determinism, Shoot
 damage (boosted and unboosted), fire rate, Slash arc (for every character),
 Shield (70% reduction, expiry, cooldown lockout, action lockout), boost
 multipliers, projectile flight (unlimited range, constant velocity into cover,
-no aim assist on either input device, point-blank wall), collision, spawn
+no aim assist on either input device, point-blank wall), mouse aim (screen →
+world round-trip across window sizes, aspect ratios, letterboxing and camera
+zoom; clicking a target's drawn pixel hits it), collision, spawn
 invulnerability, round/match flow (including the double-knockout void case),
 ult charge, and a static check that `src/sim/` never imports Phaser/DOM/`window`
 or calls `Math.random`.
@@ -119,7 +121,8 @@ src/
     fx/                 # pooled projectiles, slash smears, elimination poof
     ui/                 # shared panel + pixel-text-style helpers
     debug/              # F3 hitbox overlay
-    coords.js           # world tile <-> screen px (adds the 1-tile wall margin)
+    coords.js           # world tile <-> screen px (adds the 1-tile wall margin);
+                        #   screenToWorld() is the ONE mouse -> world conversion
     hud.js
 tests/                  # offline node:test sim tests (no browser)
 ```
@@ -128,6 +131,21 @@ tests/                  # offline node:test sim tests (no browser)
 so the same seed + same input sequence always replays identically — verified by
 the determinism test. Ticks are integers; all `*Sec` config values are converted
 to `*Ticks` once, at module load, via `secToTicks()`.
+
+### Mouse aim: one conversion, in one place
+
+`input/` knows nothing about pixels, canvas size or the camera. `GameScene`
+converts the pointer to a **world point in tiles** with
+`render/coords.js screenToWorld()` — the exact inverse of the `worldToScreen*`
+the renderer draws with — and hands that to `deviceManager.buildFrames()`. The
+aim vector is then just `normalize(aimWorld − simPlayerPosition)`.
+
+The on-screen crosshair is drawn by converting that *same* world point back to
+screen, never from raw pointer pixels, so the crosshair and the shot cannot
+drift apart. `screenToWorld` reads `pointer.worldX/worldY`, which Phaser has
+already corrected for canvas offset, FIT letterboxing, devicePixelRatio and the
+camera transform — so there are no hand-written offsets anywhere, and window
+size/zoom cannot reintroduce the aim-offset bug.
 
 ## Art
 

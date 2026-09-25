@@ -19,3 +19,22 @@ export function worldToScreenX(tileX) {
 export function worldToScreenY(tileY) {
   return (tileY + WORLD_MARGIN_TILES) * TILE_SIZE_PX;
 }
+
+/**
+ * The single screen -> world conversion, and the exact inverse of
+ * worldToScreenX/Y above. Everything that needs a world point from the mouse
+ * goes through here — no hand-written offsets anywhere else.
+ *
+ * Takes a Phaser Pointer and reads `worldX`/`worldY`, NOT `x`/`y`: Phaser has
+ * already folded in the canvas offset in the page, FIT letterbox scaling,
+ * devicePixelRatio and the camera transform (scroll, zoom, shake) by the time
+ * it sets those. The only thing left for us is px -> tiles and the
+ * WORLD_MARGIN_TILES origin shift, which is precisely what the 1-tile wall
+ * ring moved and what the input layer used to miss.
+ */
+export function screenToWorld(pointer) {
+  return {
+    x: pointer.worldX / TILE_SIZE_PX - WORLD_MARGIN_TILES,
+    y: pointer.worldY / TILE_SIZE_PX - WORLD_MARGIN_TILES,
+  };
+}

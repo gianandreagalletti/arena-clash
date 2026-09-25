@@ -64,17 +64,18 @@ export class DeviceManager {
    * Builds the 3 InputFrames for this tick.
    * `gamepadList`: live array from this.input.gamepad.gamepads (or null/empty array if not available).
    * `keys`: { w,a,s,d,q,e,r } booleans for the keyboard.
-   * `pointerScreen`: { x, y } in canvas px.
+   * `aimWorld`: { x, y } in TILES — the crosshair in world space, already
+   *   converted by render/coords.js screenToWorld(). Never raw canvas pixels.
    * `mouseDown`: boolean.
    * `playersWorld`: array of 3 { x, y } — current sim positions, for mouse-relative aim.
    */
-  buildFrames(gamepadList, keys, pointerScreen, mouseDown, playersWorld) {
+  buildFrames(gamepadList, keys, aimWorld, mouseDown, playersWorld) {
     const frames = [createEmptyFrame(), createEmptyFrame(), createEmptyFrame()];
 
     if (this.debugMode) {
       frames[this.debugPlayerIndex] = readKeyboardMouseFrame(
         keys,
-        pointerScreen,
+        aimWorld,
         playersWorld[this.debugPlayerIndex],
         mouseDown
       );
@@ -94,7 +95,7 @@ export class DeviceManager {
         this.disconnectedSlots.delete(i);
         frames[i] = readGamepadFrame(pad);
       } else if (device.kind === 'keyboardMouse') {
-        frames[i] = readKeyboardMouseFrame(keys, pointerScreen, playersWorld[i], mouseDown);
+        frames[i] = readKeyboardMouseFrame(keys, aimWorld, playersWorld[i], mouseDown);
       }
     }
 

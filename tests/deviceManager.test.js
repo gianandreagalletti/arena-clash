@@ -112,10 +112,13 @@ test('device manager: buildFrames resolves padIndex to live gamepads from gamepa
   manager.join({ kind: 'keyboardMouse' });
 
   // buildFrames with live gamepadList → resolves indices to real pads.
+  // The 3rd argument is the crosshair in WORLD TILES (already converted by
+  // render/coords.js screenToWorld), never raw canvas pixels. P3 sits at
+  // (15, 15) and the crosshair is 4 tiles to its right.
   const frames = manager.buildFrames(
     gamepadList,
     { w: false, a: false, s: false, d: false, q: false, e: false, r: false },
-    { x: 640, y: 360 },
+    { x: 19, y: 15 },
     false,
     [{ x: 5, y: 5 }, { x: 10, y: 10 }, { x: 15, y: 15 }]
   );
@@ -132,7 +135,10 @@ test('device manager: buildFrames resolves padIndex to live gamepads from gamepa
   assert.strictEqual(frames[1].aimX, 0); // 0.1 < deadzone 0.2, so clamped to 0
   assert.strictEqual(frames[1].aimY, 0.4); // 0.4 > deadzone 0.2, so passes through
 
-  // Frame for P3 (keyboard) should be neutral since no keys are pressed.
+  // Frame for P3 (keyboard) should be neutral since no keys are pressed...
   assert.strictEqual(frames[2].moveX, 0);
   assert.strictEqual(frames[2].moveY, 0);
+  // ...but its aim points from P3's own sim position at the crosshair.
+  assert.strictEqual(frames[2].aimX, 1);
+  assert.strictEqual(frames[2].aimY, 0);
 });
