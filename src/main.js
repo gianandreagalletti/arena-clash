@@ -4,6 +4,7 @@ import BootScene from './render/scenes/BootScene.js';
 import JoinScene from './render/scenes/JoinScene.js';
 import BoostScene from './render/scenes/BoostScene.js';
 import GameScene from './render/scenes/GameScene.js';
+import HelpScene from './render/scenes/HelpScene.js';
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -19,5 +20,5 @@ new Phaser.Game({
   input: {
     gamepad: true,
   },
-  scene: [BootScene, JoinScene, BoostScene, GameScene],
+  scene: [BootScene, JoinScene, BoostScene, GameScene, HelpScene],
 });

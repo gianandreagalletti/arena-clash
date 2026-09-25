@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { DeviceManager } from '../../input/deviceManager.js';
 import { CHARACTERS, CHARACTER_IDS } from '../../sim/config/balance.js';
 import { GAMEPAD_BUTTON_A, GAMEPAD_BUTTON_B, GAMEPAD_BUTTON_START } from '../../input/gamepad.js';
+import { GAMEPAD_BUTTON_VIEW } from '../../input/bindings.js';
 import { PALETTE } from '../art/palette.js';
 import { PIXEL_FONT_FAMILY } from '../art/font.js';
 import { drawPanel, pixelTextStyle } from '../ui/panel.js';
@@ -42,7 +43,7 @@ export default class JoinScene extends Phaser.Scene {
       .text(
         this.scale.width / 2,
         118,
-        'ALL 3 SLOTS FILLED: START/SPACE  ·  F1 DEBUG SOLO  ·  F2 GAMEPAD DEBUG',
+        'ALL 3 SLOTS FILLED: START/SPACE  ·  H / VIEW: HELP  ·  F1 DEBUG SOLO  ·  F2 GAMEPAD DEBUG',
         pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted)
       )
       .setOrigin(0.5);
@@ -75,8 +76,31 @@ export default class JoinScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-F2', () => {
       this.debugOverlayVisible = !this.debugOverlayVisible;
     });
+    this.input.keyboard.on('keydown-H', () => this._openHelp());
+
+    // Coming back from Help: re-baseline the pad state to whatever is held
+    // RIGHT NOW, so the button used to close Help doesn't immediately register
+    // as a join/leave/start here.
+    this.events.on(Phaser.Scenes.Events.RESUME, () => this._rebaselinePads());
 
     this._refresh();
+  }
+
+  _openHelp() {
+    this.scene.pause();
+    this.scene.launch('HelpScene', { returnTo: this.scene.key });
+  }
+
+  _rebaselinePads() {
+    for (const pad of this.input.gamepad?.gamepads || []) {
+      if (!pad) continue;
+      this.prevPadState.set(pad.index, {
+        A: pad.buttons[GAMEPAD_BUTTON_A].pressed,
+        B: pad.buttons[GAMEPAD_BUTTON_B].pressed,
+        Start: pad.buttons[GAMEPAD_BUTTON_START].pressed,
+        View: pad.buttons[GAMEPAD_BUTTON_VIEW].pressed,
+      });
+    }
   }
 
   update() {
@@ -102,6 +126,7 @@ export default class JoinScene extends Phaser.Scene {
           A: false,
           B: false,
           Start: false,
+          View: false,
         });
       }
       const prev = this.prevPadState.get(padIndex);
@@ -110,6 +135,7 @@ export default class JoinScene extends Phaser.Scene {
       const now_A = pad.buttons[GAMEPAD_BUTTON_A].pressed;
       const now_B = pad.buttons[GAMEPAD_BUTTON_B].pressed;
       const now_Start = pad.buttons[GAMEPAD_BUTTON_START].pressed;
+      const now_View = pad.buttons[GAMEPAD_BUTTON_VIEW].pressed;
 
       if (now_A && !prev.A) {
         this.deviceManager.join(device);
@@ -122,10 +148,17 @@ export default class JoinScene extends Phaser.Scene {
       if (now_Start && !prev.Start) {
         this._tryStart();
       }
+      // Any connected pad can open Help — it claims no slot.
+      if (now_View && !prev.View) {
+        prev.View = now_View;
+        this._openHelp();
+        return;
+      }
 
       prev.A = now_A;
       prev.B = now_B;
       prev.Start = now_Start;
+      prev.View = now_View;
     }
   }
 

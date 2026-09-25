@@ -111,6 +111,28 @@ that: they expire, so they're applied as a separate multiplier at the point of
 use. Character-specific numbers (dog, nova, Sniper's Shoot overrides) are
 untouched by amulets this pass.
 
+### The Help screen
+
+**H** / gamepad **View** on the join or boost screen opens an in-game reference:
+controls, combat, every pickup and amulet with its real sprite, and a HUD legend.
+
+Two rules keep it from going stale, and both are covered by `tests/help.test.js`:
+
+- **Every number is read from `balance.js`**, never typed into a string. Retune
+  the medkit heal and the Help text changes on its own — a test proves this by
+  building the content twice from two different configs and checking the strings
+  differ.
+- **Icons are the real game textures**, referenced by key (`pickup-medkit`,
+  `amulet-amuletSpeed-0`, `player-red`…). There is no Help-only art, so a sprite
+  change shows up here automatically.
+
+To document a new pickup, add one entry to `src/render/help/helpContent.js` —
+the scene iterates whatever it is handed and knows nothing about specific items.
+A test fails if a pickup exists in `balance.js` with no Help entry, or if Help
+documents something that isn't a real item. Control labels live in
+`src/input/bindings.js`, which is display data only: it names the mappings, it
+does not define them.
+
 ### Pre-match boost allocation
 
 Between the join screen and the Round 1 countdown, every player spends **10
@@ -143,6 +165,7 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - Join screen: each device claims a slot. **Gamepad:** press **A** to join, **B** to leave. **Keyboard/Mouse:** press **Enter** or **left-click** to join, **Esc** to leave.
 - Once all 3 slots (P1–P3) are filled, any joined player presses **Start** (gamepad) or **Space** to begin.
 - Boost screen: **Gamepad** d-pad/left stick to pick a category, **A** add a point, **B** remove, **Start** to ready up (press again to un-ready). **Keyboard:** Up/Down to pick, Right to add, Left to remove, **Enter** to ready. The match starts when all three are ready.
+- **Help:** press **H** (keyboard) or **View/Back** (gamepad) on the join or boost screen. Any connected device can open it; it claims no slot. Close with **Esc** / **B** (or the same button) and you return exactly where you were — slots and boost allocations are kept. Tabs: Controls, Combat, Pickups, Amulets, HUD. Not available during a round (there is no pause system).
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
 - **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc, dog hitbox, nova radius — always, not just while charging, pickup reach, candidate spawn tiles, blast and mine-trigger radii) as 1px lines over the art, plus the dog's current target and the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
@@ -175,6 +198,8 @@ multipliers, character identity (Sniper DPS band, nova radius/windup/cost,
 dog HP, cap, respawn cooldown and deterministic path), projectile flight
 (unlimited range, constant velocity into cover,
 no aim assist on either input device, point-blank wall), mouse aim (screen →
+help content (every pickup and amulet documented exactly once, text that
+follows balance.js, no NaN/undefined/unfilled placeholders), mouse aim (screen →
 world round-trip across window sizes, aspect ratios, letterboxing and camera
 zoom; clicking a target's drawn pixel hits it), pickups and amulets (spawn
 validity over many seeds, collection tie-breaks, the item slot, grenade fuse
@@ -216,6 +241,7 @@ src/
     fx/                 # pooled projectiles, slash smears, elimination poof
     ui/                 # shared panel + pixel-text-style helpers
     debug/              # F3 hitbox overlay
+    help/               # helpContent.js — the Help screen as plain data
     coords.js           # world tile <-> screen px (adds the 1-tile wall margin);
                         #   screenToWorld() is the ONE mouse -> world conversion
     hud.js

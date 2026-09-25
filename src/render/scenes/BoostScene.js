@@ -14,6 +14,7 @@ import {
   CATEGORY_LABELS,
 } from '../../input/boostAllocation.js';
 import { EdgeTracker, readGamepadMenuRaw, readKeyboardMenuRaw } from '../../input/menuInput.js';
+import { GAMEPAD_BUTTON_VIEW } from '../../input/bindings.js';
 import { PALETTE } from '../art/palette.js';
 import { PIXEL_FONT_FAMILY } from '../art/font.js';
 import { drawPanel, pixelTextStyle } from '../ui/panel.js';
@@ -75,6 +76,14 @@ export default class BoostScene extends Phaser.Scene {
         pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted)
       )
       .setOrigin(0.5);
+    this.add
+      .text(
+        this.scale.width / 2,
+        this.scale.height - 20,
+        'H / VIEW: HELP — YOUR ALLOCATION IS KEPT',
+        pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.torchCore)
+      )
+      .setOrigin(0.5);
 
     const columnWidth = this.scale.width / 3;
     const panelW = columnWidth - 20;
@@ -110,6 +119,14 @@ export default class BoostScene extends Phaser.Scene {
 
     this.arrowKeys = this.input.keyboard.createCursorKeys();
     this.enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    this.input.keyboard.on('keydown-H', () => this._openHelp());
+
+    // A fresh EdgeTracker on resume: it primes on first sight, so whatever
+    // button closed Help cannot also register as an allocation change here.
+    // The allocations themselves are scene state and survive the pause intact.
+    this.events.on(Phaser.Scenes.Events.RESUME, () => {
+      this.edgeTracker = new EdgeTracker();
+    });
 
     this._refresh();
   }
@@ -135,14 +152,20 @@ export default class BoostScene extends Phaser.Scene {
         const pad = gamepadList[device.padIndex];
         if (!pad || !pad.connected) continue;
         raw = readGamepadMenuRaw(pad);
+        raw.help = !!(pad.buttons[GAMEPAD_BUTTON_VIEW] && pad.buttons[GAMEPAD_BUTTON_VIEW].pressed);
         deviceKey = `pad${device.padIndex}`;
       } else {
         raw = readKeyboardMenuRaw(this.arrowKeys, this.enterKey);
+        raw.help = false; // the keyboard opens Help via its own keydown-H handler
         deviceKey = 'keyboardMouse';
       }
 
       const edge = this.edgeTracker.edges(deviceKey, raw);
 
+      if (edge.help) {
+        this._openHelp();
+        return;
+      }
       if (edge.ready) this.ready[i] = !this.ready[i];
       if (this.ready[i]) continue; // locked in; un-ready to keep editing
 
@@ -204,6 +227,11 @@ export default class BoostScene extends Phaser.Scene {
       this.statusTexts[i].setText(hasDevice ? (this.ready[i] ? 'READY' : 'NOT READY') : 'READY (AUTO)');
       this.statusTexts[i].setColor(this.ready[i] ? '#66FF88' : PALETTE.uiTextMuted);
     }
+  }
+
+  _openHelp() {
+    this.scene.pause();
+    this.scene.launch('HelpScene', { returnTo: this.scene.key });
   }
 
   _startMatch() {
