@@ -17,6 +17,7 @@ import {
 } from '../config/balance.js';
 import { COVER_BLOCKS, circleIntersectsRect } from '../arena.js';
 import { applyDamage, isUntargetable, damageableEntities, belongsTo } from './damage.js';
+import { damageMultiplierFor, isCloaked } from './effects.js';
 
 const SUBSTEPS = 4; // swept-ish movement so fast projectiles don't tunnel through thin cover
 
@@ -33,7 +34,7 @@ const SUBSTEPS = 4; // swept-ish movement so fast projectiles don't tunnel throu
  * returns the raw aim unchanged. Currently unreachable — AIM_ASSIST_ENABLED is
  * false (see the single guard in spawnProjectile).
  */
-function bendTowardNearestEnemy(dirX, dirY, owner, players) {
+function bendTowardNearestEnemy(state, dirX, dirY, owner, players) {
   const maxBendDeg = AIM_ASSIST_MAX_BEND_DEGREES;
   if (maxBendDeg <= 0) return { x: dirX, y: dirY };
 
@@ -45,6 +46,9 @@ function bendTowardNearestEnemy(dirX, dirY, owner, players) {
   let bestSigned = 0;
   for (const p of players) {
     if (p.id === owner.id || !p.alive) continue;
+    // A cloaked player can't be locked onto — that's what makes Cloak a
+    // mechanic rather than just a visual on a shared screen.
+    if (isCloaked(state, p)) continue;
     const dx = p.x - owner.x;
     const dy = p.y - owner.y;
     if (dx === 0 && dy === 0) continue;
@@ -81,7 +85,7 @@ export function spawnProjectile(state, owner) {
   // The one and only aim-assist guard. Disabled -> the fired direction is
   // exactly the raw input aim, for every player and every device.
   const aimDir = AIM_ASSIST_ENABLED
-    ? bendTowardNearestEnemy(rawX, rawY, owner, state.players)
+    ? bendTowardNearestEnemy(state, rawX, rawY, owner, state.players)
     : { x: rawX, y: rawY };
 
   // A muzzle inside geometry is destroyed, never relocated — relocating is what
@@ -101,7 +105,9 @@ export function spawnProjectile(state, owner) {
     vx: aimDir.x * owner.shootProjectileSpeed,
     vy: aimDir.y * owner.shootProjectileSpeed,
     radius: shoot.projectileRadiusTiles,
-    damage: owner.shootDamage, // boost-derived, per player
+    // Boost/amulet-derived, times any active Overcharge. Locked in at fire
+    // time, so an Overcharge expiring mid-flight does not weaken the shot.
+    damage: owner.shootDamage * damageMultiplierFor(state, owner),
     remainingRangeTiles: shoot.rangeTiles, // null = unlimited
     ageTicks: 0,
     explodeRadiusTiles: 0,

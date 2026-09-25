@@ -48,13 +48,15 @@ function isFriendly(a, b) {
  *
  * An active Shield reduces the incoming amount before anything else, so HP,
  * damage-dealt/taken stats and ult charge all reflect the damage that actually
- * landed.
+ * landed. Ult charge earned is scaled by the entity's Fury amulets.
+ *
+ * Returns the damage that actually landed (0 when the call no-ops).
  */
 export function applyDamage(state, target, amount, source) {
-  if (!target.alive) return;
-  if (amount <= 0) return;
-  if (isFriendly(target, source)) return;
-  if (target.kind === 'player' && state.tick < target.invulnUntilTick) return;
+  if (!target.alive) return 0;
+  if (amount <= 0) return 0;
+  if (isFriendly(target, source)) return 0;
+  if (target.kind === 'player' && state.tick < target.invulnUntilTick) return 0;
 
   const effective = isShielded(state, target) ? amount * (1 - ACTIONS.shield.damageReduction) : amount;
 
@@ -62,7 +64,9 @@ export function applyDamage(state, target, amount, source) {
 
   if (target.kind === 'player') {
     target.damageTaken += effective;
-    target.ultCharge = clampUlt(target.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_TAKEN);
+    target.ultCharge = clampUlt(
+      target.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_TAKEN * target.ultGainMultiplier
+    );
 
     if (state.tick - state.roundStartTick < FIRST_30S_WINDOW_TICKS) {
       target.damageTakenFirst30s = true;
@@ -74,7 +78,9 @@ export function applyDamage(state, target, amount, source) {
   const credit = creditFor(state, source);
   if (credit && target.kind === 'player') {
     credit.damageDealt += effective;
-    credit.ultCharge = clampUlt(credit.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_DEALT);
+    credit.ultCharge = clampUlt(
+      credit.ultCharge + effective * ULT_CHARGE_PER_DAMAGE_DEALT * credit.ultGainMultiplier
+    );
   }
 
   if (target.hp <= 0 && target.alive) {
@@ -84,10 +90,12 @@ export function applyDamage(state, target, amount, source) {
       target.charging = null; // a player killed mid-windup never releases it
       if (credit && credit.alive) {
         credit.eliminations += 1;
-        credit.ultCharge = clampUlt(credit.ultCharge + ULT_CHARGE_PER_ELIMINATION);
+        credit.ultCharge = clampUlt(credit.ultCharge + ULT_CHARGE_PER_ELIMINATION * credit.ultGainMultiplier);
       }
     }
   }
+
+  return effective; // callers tally per-source damage (e.g. grenade vs mine)
 }
 
 /** True if `entity` cannot currently be targeted (dead, or a spawn-invulnerable player). */

@@ -10,6 +10,8 @@ import {
 } from '../config/balance.js';
 import { SPAWN_POINTS } from '../arena.js';
 import { buildRoundLog } from '../log.js';
+import { armPickupSpawners, clearRoundPickups } from './pickups.js';
+import { createPickupTallies } from '../state.js';
 
 /**
  * Resets one player's per-round state (position, HP, cooldowns, stats).
@@ -37,6 +39,15 @@ function resetPlayerForRound(player) {
   player.eliminations = 0;
   player.deathTick = null;
   player.damageTakenFirst30s = false;
+  // Temporary pickups do NOT survive a round: an unused item in the slot is
+  // lost and every timed effect is dropped. Amulets are match-level and are
+  // deliberately left untouched here.
+  player.item = null;
+  player.itemHeldLastTick = false;
+  player.effects = { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0 };
+  player.pickupsCollected = createPickupTallies();
+  player.itemsUsed = { grenade: 0, mine: 0 };
+  player.damageByExplosive = { grenade: 0, mine: 0 };
 }
 
 /** Begins a fresh round: `carryUlt` applies the 50% carry-over; false for void-round replays. */
@@ -49,6 +60,7 @@ export function beginRound(state, { carryUlt }) {
   }
   state.dogs = []; // minions don't survive a round boundary
   state.projectiles = [];
+  clearRoundPickups(state); // map items, live explosives and spawner timers
   state.roundState = 'countdown';
   state.roundStateTimerTicks = ROUND_COUNTDOWN_TICKS;
 }
@@ -58,6 +70,7 @@ export function tickCountdown(state) {
   if (state.roundStateTimerTicks <= 0) {
     state.roundState = 'playing';
     state.roundStartTick = state.tick;
+    armPickupSpawners(state); // first spawn is measured from here, not from round start
     for (const player of state.players) {
       player.invulnUntilTick = state.tick + SPAWN_INVULN_TICKS;
     }

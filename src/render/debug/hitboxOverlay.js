@@ -15,7 +15,7 @@ import {
   PLAYER_RADIUS_TILES,
   CHARACTERS,
 } from '../../sim/config/balance.js';
-import { COVER_BLOCKS } from '../../sim/arena.js';
+import { COVER_BLOCKS, SPAWN_CANDIDATE_TILES } from '../../sim/arena.js';
 import { worldToScreenX, worldToScreenY } from '../coords.js';
 
 function drawCross(graphics, x, y, size) {
@@ -103,6 +103,35 @@ export function createHitboxOverlay(scene) {
         if (target) {
           graphics.lineStyle(1, 0x00ff88, 0.4);
           graphics.lineBetween(dx, dy, worldToScreenX(target.x), worldToScreenY(target.y));
+        }
+      }
+
+      // Candidate spawn tiles, as dim dots.
+      graphics.fillStyle(0x666688, 0.25);
+      for (const tile of SPAWN_CANDIDATE_TILES) {
+        graphics.fillRect(worldToScreenX(tile.x) - 1, worldToScreenY(tile.y) - 1, 2, 2);
+      }
+
+      // Each player's real pickup reach (body radius + pickup radius, Hunter included).
+      graphics.lineStyle(1, 0xf2c14e, 0.5);
+      for (const player of state.players) {
+        if (!player.alive) continue;
+        graphics.strokeCircle(
+          worldToScreenX(player.x),
+          worldToScreenY(player.y),
+          (player.radiusTiles + player.pickupRadiusTiles) * tileToPx
+        );
+      }
+
+      // Live explosives: blast radius, plus the trigger radius for mines.
+      for (const explosive of state.explosives) {
+        const ex = worldToScreenX(explosive.x);
+        const ey = worldToScreenY(explosive.y);
+        graphics.lineStyle(1, 0xff6600, 0.8);
+        graphics.strokeCircle(ex, ey, explosive.radiusTiles * tileToPx);
+        if (explosive.kind === 'mine') {
+          graphics.lineStyle(1, 0xff0000, state.tick >= explosive.armedAtTick ? 0.9 : 0.3);
+          graphics.strokeCircle(ex, ey, explosive.triggerRadiusTiles * tileToPx);
         }
       }
 

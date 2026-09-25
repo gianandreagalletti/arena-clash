@@ -18,6 +18,7 @@ const WALK_FRAME_TICKS = 8;
 const INVULN_BLINK_TICKS = 4;
 const MOVE_EPSILON_TILES = 0.002;
 const REACH_TILES_FOR_RETICLE = 0.8;
+const CLOAK_ALPHA = 0.25;
 
 // Sprite anchor: the sim position (player.x/y) is the *center of the collision
 // circle*, but a literal geometric-center anchor on a chibi sprite (huge head,
@@ -47,6 +48,9 @@ function makePlayerVisual(scene, playerId) {
   const body = scene.add.sprite(0, 0, 'player-red', 'idle-down-0');
   body.setOrigin(0.5, BODY_ORIGIN_Y);
 
+  const trailA = scene.add.rectangle(0, 0, 6, 6, 0xffffff, 0.45).setVisible(false);
+  const trailB = scene.add.rectangle(0, 0, 4, 4, 0xffffff, 0.22).setVisible(false);
+
   const shield = scene.add.sprite(0, 0, 'shield-red-0');
   shield.setVisible(false);
 
@@ -64,7 +68,7 @@ function makePlayerVisual(scene, playerId) {
     .setOrigin(0.5, 1)
     .setDepth(6000);
 
-  return { shadow, body, shield, reticle, tag };
+  return { shadow, body, shield, reticle, tag, trailA, trailB };
 }
 
 export function createPlayerRenderer(scene) {
@@ -73,7 +77,14 @@ export function createPlayerRenderer(scene) {
 
   function getOrCreate(playerId) {
     if (!visuals.has(playerId)) visuals.set(playerId, makePlayerVisual(scene, playerId));
-    if (!memory.has(playerId)) memory.set(playerId, { prevX: null, prevY: null, prevHp: null, hitFlashTicks: 0 });
+    if (!memory.has(playerId)) memory.set(playerId, {
+        prevX: null,
+        prevY: null,
+        prevHp: null,
+        hitFlashTicks: 0,
+        trailA: { x: 0, y: 0 },
+        trailB: { x: 0, y: 0 },
+      });
     return { visual: visuals.get(playerId), mem: memory.get(playerId) };
   }
 
@@ -121,15 +132,38 @@ export function createPlayerRenderer(scene) {
         visual.body.setVisible(true);
 
         const invuln = state.tick < player.invulnUntilTick;
+        const cloaked = state.tick < player.effects.cloakUntilTick;
         let alpha = 1;
         if (invuln) alpha = Math.floor(state.tick / INVULN_BLINK_TICKS) % 2 === 0 ? 1 : 0.4;
+        // Cloak is visible to EVERYONE on a shared screen — it's a readability
+        // trade, not concealment: aim assist is what it actually denies.
+        if (cloaked) alpha = Math.min(alpha, CLOAK_ALPHA);
         visual.body.setAlpha(alpha);
 
+        const overcharged = state.tick < player.effects.overchargeUntilTick;
         if (mem.hitFlashTicks > 0) {
           visual.body.setTintFill(0xffffff);
+        } else if (overcharged && state.tick % 6 < 3) {
+          // Overcharge flicker, in the player's own accent so it stays readable.
+          visual.body.setTint(colorInt(def.color));
         } else {
           visual.body.clearTint();
         }
+
+        // Adrenaline leaves a short 2-segment trail behind the player.
+        const adrenalized = state.tick < player.effects.adrenalineUntilTick;
+        visual.trailA.setVisible(adrenalized);
+        visual.trailB.setVisible(adrenalized);
+        if (adrenalized) {
+          visual.trailA.setPosition(mem.trailA.x, mem.trailA.y);
+          visual.trailB.setPosition(mem.trailB.x, mem.trailB.y);
+          visual.trailA.setFillStyle(colorInt(def.color));
+          visual.trailB.setFillStyle(colorInt(def.color));
+          visual.trailA.setDepth(player.y - 0.02);
+          visual.trailB.setDepth(player.y - 0.03);
+        }
+        mem.trailB = { ...mem.trailA };
+        mem.trailA = { x: screenX, y: screenY };
 
         visual.body.setDepth(player.y);
 
@@ -139,6 +173,9 @@ export function createPlayerRenderer(scene) {
 
         visual.tag.setPosition(screenX, screenY - RADIUS_PX * 2 - 6);
         visual.tag.setColor(def.color);
+        // The number tag survives a cloak at reduced alpha — it's the
+        // colour-blind-safe identity cue and must never vanish entirely.
+        visual.tag.setAlpha(cloaked ? 0.6 : 1);
         visual.tag.setVisible(true);
 
         const reachPx = REACH_TILES_FOR_RETICLE * TILE_SIZE_PX;
@@ -170,6 +207,8 @@ function renderGhost(visual, screenX, screenY, tileY, paletteKey) {
   visual.body.setVisible(true);
 
   visual.shadow.setVisible(false);
+  visual.trailA.setVisible(false);
+  visual.trailB.setVisible(false);
   visual.tag.setVisible(false);
   visual.reticle.setVisible(false);
   visual.shield.setVisible(false);

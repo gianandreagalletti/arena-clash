@@ -7,6 +7,9 @@ import {
   BOOST_CATEGORIES,
   BOOST_BONUS_PER_POINT,
   BOOST_POINTS_PER_PLAYER,
+  PICKUPS,
+  AMULET_IDS,
+  TEMPORARY_PICKUP_IDS,
 } from './config/balance.js';
 import { SPAWN_POINTS } from './arena.js';
 import { createRng } from './rng.js';
@@ -40,33 +43,73 @@ function boostMultiplier(boosts, category) {
   return 1 + BOOST_BONUS_PER_POINT[category] * boosts[category];
 }
 
+/** Zeroed amulet inventory. Counts are match-level and stack additively, with no cap. */
+export function createEmptyAmulets() {
+  const amulets = {};
+  for (const id of AMULET_IDS) amulets[id] = 0;
+  return amulets;
+}
+
+/** Zeroed per-round pickup tallies for the end-of-round log. */
+function createPickupTallies() {
+  const collected = {};
+  for (const id of [...TEMPORARY_PICKUP_IDS, ...AMULET_IDS]) collected[id] = 0;
+  return collected;
+}
+
+/**
+ * Recomputes every stat derived from character base + boosts + amulets.
+ *
+ * Called once at player creation and again the moment an amulet is picked up —
+ * never per tick. Timed pickups (Overcharge, Adrenaline) are deliberately NOT
+ * folded in here: they expire, so they're applied at the point of use as a
+ * separate multiplier (see systems/effects.js).
+ */
+export function recomputeDerivedStats(player) {
+  const def = CHARACTERS[player.characterId];
+  const shoot = shootConfigFor(player.characterId);
+  const per = PICKUPS.amulets.perStack;
+  const a = player.amulets;
+
+  player.maxHp = def.hp * boostMultiplier(player.boosts, 'hp') * (1 + per.hp * a.amuletVitality);
+  player.speedTilesPerSec =
+    def.speedTilesPerSec * boostMultiplier(player.boosts, 'speed') * (1 + per.speed * a.amuletSpeed);
+  player.shootDamage =
+    shoot.damage * boostMultiplier(player.boosts, 'shootDmg') * (1 + per.shoot * a.amuletMarksman);
+  player.slashDamage =
+    ACTIONS.slash.damage * boostMultiplier(player.boosts, 'slashDmg') * (1 + per.slash * a.amuletBlade);
+  player.shootCooldownMaxTicks = shoot.cooldownTicks;
+  player.shootProjectileSpeed = shoot.projectileSpeedTilesPerSec;
+
+  // Ward shortens the Shield cooldown but never past the floor. The floor is a
+  // limit on the STAT, not on how many Wards a player may hold.
+  player.shieldCooldownTicks = Math.max(
+    PICKUPS.amulets.shieldCooldownFloorTicks,
+    ACTIONS.shield.cooldownTicks - per.shieldCdTicks * a.amuletWard
+  );
+  player.ultGainMultiplier = 1 + per.ultGain * a.amuletFury;
+  player.pickupRadiusTiles = PICKUPS.pickupRadius + per.pickupRadius * a.amuletHunter;
+}
+
 function createPlayer(index, characterId, rawBoosts) {
-  const def = CHARACTERS[characterId];
   const spawn = SPAWN_POINTS[index];
   const boosts = normalizeBoosts(rawBoosts, index);
 
-  // Boosted stats are derived ONCE here and stay fixed for the whole match.
-  // Per-character Shoot overrides are folded in first, boosts on top.
-  const maxHp = def.hp * boostMultiplier(boosts, 'hp');
-  const shoot = shootConfigFor(characterId);
-
-  return {
+  const player = {
     id: index,
     kind: 'player', // damageable-entity tag, see systems/damage.js
     characterId,
     boosts,
+    // Match-level: amulets survive rounds and eliminations, and only reset on a
+    // brand-new match (i.e. a fresh createInitialState).
+    amulets: createEmptyAmulets(),
     x: spawn.x,
     y: spawn.y,
     radiusTiles: PLAYER_RADIUS_TILES,
     aimX: spawn.defaultAimX,
     aimY: spawn.defaultAimY,
-    hp: maxHp,
-    maxHp,
-    speedTilesPerSec: def.speedTilesPerSec * boostMultiplier(boosts, 'speed'),
-    shootDamage: shoot.damage * boostMultiplier(boosts, 'shootDmg'),
-    shootCooldownMaxTicks: shoot.cooldownTicks,
-    shootProjectileSpeed: shoot.projectileSpeedTilesPerSec,
-    slashDamage: ACTIONS.slash.damage * boostMultiplier(boosts, 'slashDmg'),
+    hp: 0, // set from maxHp once derived stats exist
+    maxHp: 0,
     alive: true,
     shootCooldownTicks: 0,
     slashCooldownTicks: 0,
@@ -78,6 +121,10 @@ function createPlayer(index, characterId, rawBoosts) {
     charging: null, // null | 'nova' — a real sim state, not just a render cue
     chargeReleaseTick: 0,
     dogReadyAtTick: 0, // Summoner only: set when its dog dies
+    // Pickups (per-round).
+    item: null, // null | 'grenade' | 'mine' — the single usable-item slot
+    itemHeldLastTick: false, // for edge-triggering the Item button
+    effects: { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0 },
     roundsWon: 0,
     // Per-round stats (reset by systems/round.js at the start of each round).
     damageDealt: 0,
@@ -85,8 +132,17 @@ function createPlayer(index, characterId, rawBoosts) {
     eliminations: 0,
     deathTick: null,
     damageTakenFirst30s: false,
+    pickupsCollected: createPickupTallies(),
+    itemsUsed: { grenade: 0, mine: 0 },
+    damageByExplosive: { grenade: 0, mine: 0 },
   };
+
+  recomputeDerivedStats(player);
+  player.hp = player.maxHp;
+  return player;
 }
+
+export { createPickupTallies };
 
 /**
  * Creates a brand-new match state. `characterIds` is an array of 3 character
@@ -118,6 +174,18 @@ export function createInitialState(seed, characterIds, boostAllocations) {
     nextProjectileId: 1,
     dogs: [], // Summoner minions — damageable entities, see systems/dog.js
     nextDogId: 1,
+    // Map items and the things they leave behind (see systems/pickups.js,
+    // systems/explosives.js). All cleared at round end.
+    pickups: [],
+    nextPickupId: 1,
+    explosives: [], // live grenades and armed mines
+    nextExplosiveId: 1,
+    nextExplosionId: 1,
+    // Spawner timers, armed when the round countdown ends.
+    nextTempSpawnTick: 0,
+    nextAmuletSpawnTick: 0,
+    // Per-round audit trail for the end-of-round log.
+    roundPickupEvents: [],
     logs: [],
     pendingLogPrint: null, // set by round.js when a round just ended; caller should print + clear
     // Per-tick transient data for rendering (cleared every tick by step()):

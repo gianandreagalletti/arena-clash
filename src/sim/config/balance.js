@@ -95,6 +95,81 @@ export const ACTIONS = {
   },
 };
 
+// --- Map pickups & amulets ---
+// Two independent spawners drop items on the map during a round. Temporary
+// pickups expire and are wiped at round end; amulets are permanent for the
+// rest of the MATCH, stack additively and have no cap.
+//
+// All values are playtesting starting points. Seconds are converted to ticks
+// once, here, so no logic ever converts at runtime.
+export const PICKUPS = {
+  pickupRadius: 0.4, // tiles; the Hunter amulet adds to this
+  minDistFromPlayer: 3, // tiles; a spawn this close to a living player is rejected
+
+  temporary: {
+    firstSpawnTicks: secToTicks(4.0), // after the round countdown ends
+    intervalMinTicks: secToTicks(6.0),
+    intervalMaxTicks: secToTicks(10.0),
+    maxOnMap: 2,
+    lifetimeTicks: secToTicks(12.0),
+    weights: {
+      medkit: 20,
+      overcharge: 15,
+      adrenaline: 15,
+      shieldBattery: 15,
+      grenade: 15,
+      mine: 10,
+      cloak: 10,
+    },
+    // TODO: explosions ignore line of sight this pass — cover does not block a
+    // blast. Revisit once it shows up in playtests.
+    grenade: { rangeTiles: 5, fuseTicks: secToTicks(1.0), radiusTiles: 1.5, damage: 35 },
+    mine: {
+      armTicks: secToTicks(1.0),
+      triggerRadiusTiles: 0.6,
+      radiusTiles: 1.2,
+      damage: 35,
+    },
+    overcharge: { mult: 1.3, durationTicks: secToTicks(8.0) },
+    adrenaline: { mult: 1.25, durationTicks: secToTicks(6.0) },
+    medkit: { heal: 35 },
+    cloak: { durationTicks: secToTicks(4.0) },
+  },
+
+  amulets: {
+    firstSpawnTicks: secToTicks(10.0),
+    intervalMinTicks: secToTicks(12.0),
+    intervalMaxTicks: secToTicks(20.0),
+    maxOnMap: 1,
+    weights: {
+      amuletSpeed: 1,
+      amuletVitality: 1,
+      amuletBlade: 1,
+      amuletMarksman: 1,
+      amuletWard: 1,
+      amuletFury: 1,
+      amuletHunter: 1,
+    },
+    // Per amulet held. Duplicates add together, then multiply against boosts.
+    perStack: {
+      speed: 0.05,
+      hp: 0.08,
+      slash: 0.06,
+      shoot: 0.06,
+      shieldCdTicks: secToTicks(1.0),
+      ultGain: 0.08,
+      pickupRadius: 0.3,
+    },
+    shieldCooldownFloorTicks: secToTicks(2.0), // a floor on the stat, not a cap on amulets
+  },
+};
+
+/** Ids of the two pickup families, and the amulet stat each amulet type feeds. */
+export const TEMPORARY_PICKUP_IDS = Object.keys(PICKUPS.temporary.weights);
+export const AMULET_IDS = Object.keys(PICKUPS.amulets.weights);
+/** Pickups that occupy the single item slot instead of applying instantly. */
+export const USABLE_PICKUP_IDS = ['grenade', 'mine'];
+
 // --- Pre-match boost allocation ---
 // Each player spends BOOST_POINTS_PER_PLAYER points across these categories.
 // Bonuses are multipliers on the base stat, applied once in createInitialState

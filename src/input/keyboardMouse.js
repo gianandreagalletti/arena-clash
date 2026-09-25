@@ -1,6 +1,6 @@
 // Maps keyboard + mouse state to an InputFrame.
 // WASD: move · Mouse: aim toward the cursor · Left click (hold): Shoot ·
-// E: Slash · Q: Shield · R: character ability (ult).
+// E: Slash · Q: Shield · R: character ability (ult) · F: use item.
 //
 // Diagonal move normalization is handled centrally in sim/systems/movement.js
 // (the sim is the single authority on movement math), so this layer just
@@ -13,7 +13,7 @@
 // input/ never learned about.
 
 /**
- * `keys`: { w, a, s, d, q, e, r } booleans.
+ * `keys`: { w, a, s, d, q, e, r, f } booleans.
  * `aimWorld`: { x, y } in TILES — where the crosshair is, in world space.
  * `playerWorld`: { x, y } in tiles — the player's current *sim* position (not
  * the sprite position: the sprite's anchor and idle bob are visual only).
@@ -38,5 +38,6 @@ export function readKeyboardMouseFrame(keys, aimWorld, playerWorld, mouseDown) {
     slash: !!keys.e,
     shield: !!keys.q,
     ult: !!keys.r,
+    item: !!keys.f,
   };
 }

@@ -7,6 +7,7 @@ import { GAMEPAD_BUTTON_A } from '../../input/gamepad.js';
 import { createArenaRenderer } from '../arenaRenderer.js';
 import { createPlayerRenderer } from '../players/playerRenderer.js';
 import { createDogRenderer } from '../dogRenderer.js';
+import { createItemRenderer } from '../itemRenderer.js';
 import { createFxRenderer } from '../fx/fxRenderer.js';
 import { createHud, updateHud, updateDisconnectBanner } from '../hud.js';
 import { createHitboxOverlay } from '../debug/hitboxOverlay.js';
@@ -36,8 +37,9 @@ export default class GameScene extends Phaser.Scene {
     this.arena = createArenaRenderer(this);
     this.playerRenderer = createPlayerRenderer(this);
     this.dogRenderer = createDogRenderer(this);
+    this.itemRenderer = createItemRenderer(this);
     this.fxRenderer = createFxRenderer(this);
-    this.frameEvents = { meleeSwings: [], novaBlasts: [] };
+    this.frameEvents = { meleeSwings: [], novaBlasts: [], explosions: [] };
     this.hud = createHud(this);
     this.hitboxOverlay = createHitboxOverlay(this);
 
@@ -49,6 +51,7 @@ export default class GameScene extends Phaser.Scene {
       q: Phaser.Input.Keyboard.KeyCodes.Q,
       e: Phaser.Input.Keyboard.KeyCodes.E,
       r: Phaser.Input.Keyboard.KeyCodes.R,
+      f: Phaser.Input.Keyboard.KeyCodes.F,
     });
     this.mouseDown = false;
     this.input.on('pointerdown', (p) => {
@@ -114,7 +117,7 @@ export default class GameScene extends Phaser.Scene {
     // Transient sim events (melee swings, nova blasts) only live for the tick
     // that produced them, and this loop can run several ticks per rendered
     // frame. Collect them all so no FX is silently dropped during catch-up.
-    this.frameEvents = { meleeSwings: [], novaBlasts: [] };
+    this.frameEvents = { meleeSwings: [], novaBlasts: [], explosions: [] };
 
     this.accumulatorMs += delta;
     let ticks = 0;
@@ -128,6 +131,7 @@ export default class GameScene extends Phaser.Scene {
     this.arena.update(this.state.tick);
     this.playerRenderer.update(this.state);
     this.dogRenderer.update(this.state);
+    this.itemRenderer.update(this.state);
     this.fxRenderer.update(this.state, this.frameEvents);
     updateHud(this.hud, this.state);
     updateDisconnectBanner(this.hud, this.deviceManager.disconnectedSlots);
@@ -145,6 +149,7 @@ export default class GameScene extends Phaser.Scene {
       q: this.keys.q.isDown,
       e: this.keys.e.isDown,
       r: this.keys.r.isDown,
+      f: this.keys.f.isDown,
     };
     const gamepadList = this.input.gamepad?.gamepads || [];
     const frames = this.deviceManager.buildFrames(gamepadList, keys, this._aimWorld(), this.mouseDown, playersWorld);
@@ -155,6 +160,7 @@ export default class GameScene extends Phaser.Scene {
     // Drain this tick's transient events before the next step() clears them.
     if (this.state.meleeSwings.length) this.frameEvents.meleeSwings.push(...this.state.meleeSwings);
     if (this.state.novaBlasts.length) this.frameEvents.novaBlasts.push(...this.state.novaBlasts);
+    if (this.state.explosions.length) this.frameEvents.explosions.push(...this.state.explosions);
 
     if (this.state.logs.length > prevLogCount && this.state.pendingLogPrint) {
       printRoundLog(this.state.pendingLogPrint);

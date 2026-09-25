@@ -4,7 +4,7 @@ A top-down, 3-player free-for-all arena shooter (Soul Knight-style). This is the
 Week 1 MVP: core deterministic simulation, a shared Shoot/Slash/Shield baseline
 with one distinct identity per character, pre-match boost allocation,
 round/match flow, and 3-gamepad / gamepad+keyboard local play. The shrinking
-zone, pickups and menus are out of scope this week.
+zone and menus are out of scope this week.
 
 ## Combat model
 
@@ -56,6 +56,61 @@ the nearest enemy (`trackingBias`, 0 = pure random, 1 = direct chase; currently
 path. Damage it deals is credited to the Summoner's ledger; damage dealt *to* it
 grants no ult charge, so a respawning dog can't be farmed as a charge battery.
 
+## Pickups & amulets
+
+Items spawn at random valid spots during a round, from two independent spawners.
+Every number lives under `PICKUPS` in `balance.js`; all of them are playtesting
+starting points.
+
+**Temporary pickups** (up to 2 on the map, 12s lifetime) are wiped at round end:
+
+| Item | Effect |
+|---|---|
+| Medkit | Heals 35, capped at max HP |
+| Overcharge | Shoot/Slash damage ×1.30 for 8s (refreshes, never stacks) |
+| Adrenaline | Move speed ×1.25 for 6s (refreshes, never stacks) |
+| Shield Battery | Clears the Shield cooldown (no effect on a shield already up) |
+| Cloak | 4s at low alpha, and aim assist can't lock you. **Shooting or Slashing ends it instantly**; taking damage does not |
+| Grenade | Item slot. Thrown along the aim up to 5 tiles, stops on cover, explodes 1s later for 35 in a 1.5-tile radius |
+| Mine | Item slot. Dropped at your feet, arms after 1s, triggers on any non-owner within 0.6 tiles for 35 in a 1.2-tile radius |
+
+Grenade and Mine share a **single item slot** (use with gamepad **X** / keyboard
+**F**). With the slot full, walking over another usable item does nothing and it
+stays on the map. Explosions run through the normal damage path — Shield still
+reduces by 70%, spawn invulnerability still ignores them, dogs still get hit —
+and an owner who dies still gets their pending grenade and standing mines, with
+the damage credited to them.
+
+**Amulets** (max 1 on the map at a time) are **permanent for the rest of the
+match**: they survive rounds and eliminations, stack additively, and have no cap.
+They only reset on a brand-new match. Spawns are random and unrelated to who won
+the previous round — they reward map control mid-round, not winning.
+
+| Amulet | Per copy held |
+|---|---|
+| Speed | +5% move speed |
+| Vitality | +8% max HP (mid-round, current HP rises by the same delta — not a full heal) |
+| Blade | +6% Slash damage |
+| Marksman | +6% Shoot damage |
+| Ward | −1.0s Shield cooldown, down to a 2.0s floor |
+| Fury | +8% ult charge from every source |
+| Hunter | +0.3 tiles pickup reach |
+
+Sources **multiply** with each other, while duplicate amulets **add**:
+
+```
+shootDmg = base x (1 + 0.03·boostPts) x (1 + 0.06·nMarksman) x (overcharged ? 1.30 : 1)
+speed    = base x (1 + 0.03·boostPts) x (1 + 0.05·nSpeed)    x (adrenalized ? 1.25 : 1)
+maxHp    = base x (1 + 0.04·boostPts) x (1 + 0.08·nVitality)
+shieldCd = max(floor, base − 1.0s·nWard)
+```
+
+Amulet stats are recomputed **only** when an amulet is picked up (never per
+tick), in `recomputeDerivedStats`. Timed effects are deliberately kept out of
+that: they expire, so they're applied as a separate multiplier at the point of
+use. Character-specific numbers (dog, nova, Sniper's Shoot overrides) are
+untouched by amulets this pass.
+
 ### Pre-match boost allocation
 
 Between the join screen and the Round 1 countdown, every player spends **10
@@ -90,9 +145,9 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - Boost screen: **Gamepad** d-pad/left stick to pick a category, **A** add a point, **B** remove, **Start** to ready up (press again to un-ready). **Keyboard:** Up/Down to pick, Right to add, Left to remove, **Enter** to ready. The match starts when all three are ready.
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
-- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc, dog hitbox, nova radius — always, not just while charging) as 1px lines over the art, plus the dog's current target and the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
-- **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, **Y** character ability.
-- **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, **R** character ability.
+- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc, dog hitbox, nova radius — always, not just while charging, pickup reach, candidate spawn tiles, blast and mine-trigger radii) as 1px lines over the art, plus the dog's current target and the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
+- **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, **Y** character ability, **X** use item.
+- **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, **R** character ability, **F** use item.
 - **Character ability (Y / R):** Berserker casts the nova (costs ult charge), Summoner summons its dog. Sniper has none. Watch the HUD: the charge bar blinks orange on "NOVA READY", and the Summoner panel shows its dog's HP or a respawn countdown.
 - A round ends when one player is left standing; first to 3 round wins takes the match. At the match-over screen, press **A** (gamepad) or **Space** to rematch (same boost allocation).
 
@@ -121,9 +176,12 @@ dog HP, cap, respawn cooldown and deterministic path), projectile flight
 (unlimited range, constant velocity into cover,
 no aim assist on either input device, point-blank wall), mouse aim (screen →
 world round-trip across window sizes, aspect ratios, letterboxing and camera
-zoom; clicking a target's drawn pixel hits it), collision, spawn
-invulnerability, round/match flow (including the double-knockout void case),
-ult charge, and a static check that `src/sim/` never imports Phaser/DOM/`window`
+zoom; clicking a target's drawn pixel hits it), pickups and amulets (spawn
+validity over many seeds, collection tie-breaks, the item slot, grenade fuse
+and cover stop, mine arming and owner immunity, every timed effect, amulet
+stacking/floors/composition, and what survives a round boundary), collision,
+spawn invulnerability, round/match flow (including the double-knockout void
+case), ult charge, and a static check that `src/sim/` never imports Phaser/DOM/`window`
 or calls `Math.random`.
 
 ## Changing balance values
@@ -131,7 +189,8 @@ or calls `Math.random`.
 Every gameplay number lives in **`src/sim/config/balance.js`** — `ACTIONS`
 (the shared baseline), `CHARACTERS` (HP, speed and each character's own
 overrides/abilities), boost points and per-point
-bonuses, aim assist, invuln duration, round/match timers, ult charge formula.
+bonuses,  (both spawners, every item and every amulet), aim assist,
+invuln duration, round/match timers, ult charge formula.
 Nothing else in `src/sim/` hardcodes a number. `src/sim/characters/*.js` are thin
 re-exports of `balance.js`'s `CHARACTERS` entries (kept as separate files
 per-character for organization; the numbers themselves live in one place).
@@ -285,6 +344,26 @@ smear fill the brief explicitly wants to stay white.
   acceptance criteria's screenshot requirement.
 
 ## Deviations from the brief (flagged, not silently fixed)
+
+- **Blast radius vs nova radius use different rules.** Grenade and mine
+  explosions catch anyone whose *body* overlaps the blast (`dist <= radius +
+  targetRadius`), while the Berserker nova uses center-to-center (`dist <=
+  radius`), because that's what its own change request specified and pinned with
+  a boundary test. Both are defensible; having two conventions in one codebase
+  is not. Worth unifying once someone decides which one is right.
+- **A dead owner gets the damage but not the kill.** Mines and pending grenades
+  keep working after their owner is eliminated, and the damage is credited to
+  them as the brief asks. Elimination credit still follows the pre-existing rule
+  in `applyDamage` that the killer must be alive, so a posthumous mine kill
+  raises nobody's elimination count. Changing that would touch elimination
+  logic this pass was told not to touch.
+- **The 14 item icons are procedural, not hand-authored grids.** Player and dog
+  sprites are ASCII pixel grids in `sprites.js`; the pickups are short lists of
+  authored-pixel rects in `textures.js` instead. Fourteen hand-typed 16×16 grids
+  is a lot of surface for silent off-by-one mistakes, and these are simple
+  geometric glyphs. Same palette, same 2× block size, same texture-key contract.
+- **Explosions ignore line of sight**, per the brief — cover does not block a
+  blast. Flagged as a TODO in `balance.js` next to the grenade/mine numbers.
 
 - **`state.novaBlasts` entries carry no id.** The render pass was asked to dedupe
   blast FX "by id", but the sim pushes `{playerId, x, y, radiusTiles, tick}`. The

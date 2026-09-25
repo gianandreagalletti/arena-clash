@@ -1,7 +1,7 @@
 // Static "Courtyard" arena layout: spawn points, cover blocks, center platform.
 // Pure data + geometry helpers. No Phaser/DOM.
 
-import { ARENA_WIDTH_TILES, ARENA_HEIGHT_TILES } from './config/balance.js';
+import { ARENA_WIDTH_TILES, ARENA_HEIGHT_TILES, PICKUPS } from './config/balance.js';
 
 const CENTER_X = ARENA_WIDTH_TILES / 2; // 12
 const CENTER_Y = ARENA_HEIGHT_TILES / 2; // 8
@@ -49,6 +49,25 @@ export const CENTER_PLATFORM = {
 export function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
+
+/**
+ * Every tile center an item may spawn on, computed once at load: inside the
+ * arena and clear of cover (the center platform is deliberately allowed — it's
+ * visual only). Per-spawn filters (distance from players, tiles already
+ * occupied) are applied at spawn time in systems/pickups.js.
+ */
+export const SPAWN_CANDIDATE_TILES = (() => {
+  const tiles = [];
+  for (let tx = 0; tx < ARENA_WIDTH_TILES; tx++) {
+    for (let ty = 0; ty < ARENA_HEIGHT_TILES; ty++) {
+      const x = tx + 0.5;
+      const y = ty + 0.5;
+      const blocked = COVER_BLOCKS.some((block) => circleIntersectsRect(x, y, PICKUPS.pickupRadius, block));
+      if (!blocked) tiles.push({ x, y });
+    }
+  }
+  return tiles;
+})();
 
 // Closest point on an AABB to a given point.
 export function closestPointOnRect(px, py, rect) {

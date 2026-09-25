@@ -9,6 +9,7 @@ import Phaser from 'phaser';
 import { TILE_SIZE_PX, CHARACTERS } from '../../sim/config/balance.js';
 import { worldToScreenX, worldToScreenY } from '../coords.js';
 import { PALETTE, paletteKeyForCharacterColor } from '../art/palette.js';
+import { PIXEL_FONT_FAMILY } from '../art/font.js';
 import { snapToCompassDirection } from '../art/textures.js';
 
 const FX_DEPTH = 7000;
@@ -413,6 +414,128 @@ function createDogFx(scene) {
   };
 }
 
+// --- Grenade / mine explosions ---
+//
+// Same shockwave as the nova, in explosion colors. These DO carry an id from
+// the sim, so they dedupe on it directly.
+
+const EXPLOSION_TICKS = 7;
+
+function createExplosionFx(scene) {
+  const graphics = scene.add.graphics().setDepth(FX_DEPTH).setBlendMode(Phaser.BlendModes.ADD);
+  const active = [];
+  const played = new Set();
+
+  return {
+    update(state, events) {
+      for (const blast of events.explosions) {
+        if (played.has(blast.id)) continue;
+        played.add(blast.id);
+        active.push({
+          x: worldToScreenX(blast.x),
+          y: worldToScreenY(blast.y),
+          radiusPx: blast.radiusTiles * TILE_SIZE_PX,
+          startTick: state.tick,
+        });
+        if (ELIMINATION_SHAKE_ENABLED) scene.cameras.main.shake(90, 0.005);
+      }
+
+      graphics.clear();
+      for (let i = active.length - 1; i >= 0; i--) {
+        const blast = active[i];
+        const elapsed = state.tick - blast.startTick;
+        if (elapsed >= EXPLOSION_TICKS) {
+          active.splice(i, 1);
+          continue;
+        }
+        const t = elapsed / EXPLOSION_TICKS;
+        const fade = 1 - t;
+        drawPixelRing(graphics, blast.x, blast.y, blast.radiusPx * t, 5, colorInt(PALETTE.torchBase), fade);
+        drawPixelRing(graphics, blast.x, blast.y, blast.radiusPx * t - 3, 3, colorInt(PALETTE.torchCore), fade);
+      }
+
+      if (played.size > 128) played.clear();
+    },
+  };
+}
+
+// --- Pickup collection feedback ---
+
+const PICKUP_LABELS = {
+  medkit: 'MEDKIT',
+  overcharge: '+DMG',
+  adrenaline: '+SPD',
+  shieldBattery: 'SHIELD',
+  grenade: 'GRENADE',
+  mine: 'MINE',
+  cloak: 'CLOAK',
+  amuletSpeed: '+SPD',
+  amuletVitality: '+HP',
+  amuletBlade: '+SLASH',
+  amuletMarksman: '+SHOOT',
+  amuletWard: '-SHLD CD',
+  amuletFury: '+ULT',
+  amuletHunter: '+REACH',
+};
+
+const LABEL_TICKS = 30;
+
+function createPickupFx(scene) {
+  const prevCounts = new Map(); // playerId -> { type: count }
+  const labels = [];
+  const freeLabels = [];
+
+  function showLabel(state, player, type) {
+    const text =
+      freeLabels.pop() ||
+      scene.add
+        .text(0, 0, '', {
+          fontFamily: PIXEL_FONT_FAMILY,
+          fontSize: '8px',
+          color: PALETTE.uiText,
+          stroke: PALETTE.outline,
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5, 1)
+        .setDepth(FX_DEPTH + 1);
+    const isAmulet = type.startsWith('amulet');
+    text.setText(PICKUP_LABELS[type] || type);
+    text.setColor(isAmulet ? PALETTE.itemGold : PALETTE.uiText);
+    text.setVisible(true);
+    labels.push({ text, startTick: state.tick, playerId: player.id });
+  }
+
+  return {
+    update(state) {
+      for (const player of state.players) {
+        const prev = prevCounts.get(player.id);
+        if (prev) {
+          for (const [type, count] of Object.entries(player.pickupsCollected)) {
+            if (count > (prev[type] || 0)) showLabel(state, player, type);
+          }
+        }
+        prevCounts.set(player.id, { ...player.pickupsCollected });
+      }
+
+      for (let i = labels.length - 1; i >= 0; i--) {
+        const label = labels[i];
+        const elapsed = state.tick - label.startTick;
+        if (elapsed >= LABEL_TICKS || elapsed < 0) {
+          label.text.setVisible(false);
+          freeLabels.push(label.text);
+          labels.splice(i, 1);
+          continue;
+        }
+        const owner = state.players.find((p) => p.id === label.playerId);
+        if (!owner) continue;
+        // Floats up off the player as it fades.
+        label.text.setPosition(worldToScreenX(owner.x), worldToScreenY(owner.y) - 22 - elapsed);
+        label.text.setAlpha(1 - elapsed / LABEL_TICKS);
+      }
+    },
+  };
+}
+
 export function createFxRenderer(scene) {
   const projectiles = createProjectilePool(scene);
   const slash = createSlashFx(scene);
@@ -420,6 +543,8 @@ export function createFxRenderer(scene) {
   const telegraph = createNovaTelegraph(scene);
   const blast = createNovaBlastFx(scene);
   const dogFx = createDogFx(scene);
+  const explosionFx = createExplosionFx(scene);
+  const pickupFx = createPickupFx(scene);
 
   return {
     /**
@@ -433,7 +558,9 @@ export function createFxRenderer(scene) {
       elimination.update(state);
       telegraph.update(state);
       blast.update(state, events);
+      explosionFx.update(state, events);
       dogFx.update(state);
+      pickupFx.update(state);
     },
   };
 }

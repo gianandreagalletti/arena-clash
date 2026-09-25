@@ -36,6 +36,29 @@ export const PALETTE = {
 
   shieldTint: '#8FD0F4',
 
+  // --- Map items ---
+  // One readable accent per pickup, plus the shared gold that marks anything
+  // permanent (amulets) apart from anything temporary at a glance.
+  itemGold: '#F2C14E',
+  itemGoldDark: '#8A6A1F',
+  itemMedkit: '#E5484D',
+  itemOvercharge: '#FFE08A',
+  itemAdrenaline: '#4EE0C0',
+  itemBattery: '#4EA8FF',
+  itemGrenade: '#5C7A3F',
+  itemMine: '#7A4B4B',
+  itemCloak: '#9B7BD4',
+  itemMetal: '#C9D2CC',
+  amuletGems: {
+    amuletSpeed: '#4EE0C0',
+    amuletVitality: '#FF7A8A',
+    amuletBlade: '#FF9D47',
+    amuletMarksman: '#6BD66B',
+    amuletWard: '#4EA8FF',
+    amuletFury: '#D46BD4',
+    amuletHunter: '#FFE08A',
+  },
+
   uiPanelBg: '#000000',
   uiPanelBorder: '#26382C',
   uiText: '#E7E6D6',

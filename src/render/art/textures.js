@@ -24,6 +24,9 @@
 //   proj-{red|blue|green}
 //   slash-{red|blue|green}-{dir}-{0|1|2}   dir one of the 8 compass points
 //   shield-{red|blue|green}-{0|1}
+//   pickup-{medkit|overcharge|adrenaline|shieldBattery|grenade|mine|cloak}
+//   amulet-{amuletSpeed|...|amuletHunter}-{0|1}   2-frame sparkle
+//   mine-unarmed / mine-armed              a deployed mine
 //   particle-{red|blue|green}              elimination "poof" square
 //   (the ghost palette has no proj-/slash-/shield-/particle- variant — eliminated players don't attack)
 
@@ -372,7 +375,118 @@ function generateBiteTexture(scene) {
   scene.textures.addCanvas('bite', canvas);
 }
 
+// --- Map items ---
+//
+// 14 icons is too many to hand-author as ASCII grids without mistakes, so each
+// one is a short list of authored-pixel rects instead: [x, y, w, h, color].
+// Same 16x16 frame and 2x block size as every other sprite, so they sit on the
+// tile grid exactly like the characters do.
+const ITEM_GLYPHS = {
+  medkit: [
+    [2, 4, 12, 9, PALETTE.itemMedkit],
+    [7, 6, 2, 5, '#FFFFFF'],
+    [5, 8, 6, 2, '#FFFFFF'],
+  ],
+  overcharge: [
+    [9, 2, 3, 5, PALETTE.itemOvercharge],
+    [6, 6, 4, 4, PALETTE.itemOvercharge],
+    [8, 9, 3, 5, PALETTE.itemOvercharge],
+    [4, 9, 4, 3, PALETTE.itemOvercharge],
+  ],
+  adrenaline: [
+    [7, 2, 2, 8, PALETTE.itemAdrenaline],
+    [5, 4, 6, 2, PALETTE.itemAdrenaline],
+    [5, 10, 6, 4, PALETTE.itemAdrenaline],
+  ],
+  shieldBattery: [
+    [4, 3, 8, 11, PALETTE.itemBattery],
+    [6, 1, 4, 2, PALETTE.itemMetal],
+    [6, 6, 4, 5, PALETTE.itemOvercharge],
+  ],
+  grenade: [
+    [5, 5, 6, 8, PALETTE.itemGrenade],
+    [7, 2, 2, 3, PALETTE.itemMetal],
+    [9, 2, 3, 2, PALETTE.itemMetal],
+  ],
+  mine: [
+    [3, 7, 10, 6, PALETTE.itemMine],
+    [7, 4, 2, 3, PALETTE.itemMetal],
+    [6, 9, 4, 2, PALETTE.itemMedkit],
+  ],
+  cloak: [
+    [5, 3, 6, 4, PALETTE.itemCloak],
+    [3, 6, 10, 7, PALETTE.itemCloak],
+    [6, 7, 4, 3, PALETTE.outline],
+  ],
+};
+
+/** An amulet: a gold frame with a per-type gem, so "permanent" reads instantly. */
+function amuletGlyph(amuletId) {
+  return [
+    [4, 3, 8, 10, PALETTE.itemGold],
+    [5, 4, 6, 8, PALETTE.itemGoldDark],
+    [6, 5, 4, 6, PALETTE.amuletGems[amuletId]],
+    [7, 1, 2, 2, PALETTE.itemGold],
+  ];
+}
+
+/** Paints one glyph into a 16x16 frame with a 1px outline silhouette under it. */
+function paintGlyph(ctx, rects, originX = 0, originY = 0) {
+  // Outline pass: every rect grown by 1 authored px, drawn in the outline color.
+  ctx.fillStyle = PALETTE.outline;
+  for (const [x, y, w, h] of rects) {
+    ctx.fillRect(originX + (x - 1) * PX, originY + (y - 1) * PX, (w + 2) * PX, (h + 2) * PX);
+  }
+  for (const [x, y, w, h, color] of rects) {
+    ctx.fillStyle = color;
+    ctx.fillRect(originX + x * PX, originY + y * PX, w * PX, h * PX);
+  }
+}
+
+function generateItemTextures(scene) {
+  const size = PLAYER_FRAME_SIZE * PX;
+
+  for (const [id, rects] of Object.entries(ITEM_GLYPHS)) {
+    const canvas = makeCanvas(size, size);
+    paintGlyph(canvas.getContext('2d'), rects);
+    scene.textures.addCanvas(`pickup-${id}`, canvas);
+  }
+
+  // Amulets get a 2-frame sparkle so they read as rare from across the arena.
+  for (const id of Object.keys(PALETTE.amuletGems)) {
+    for (let frame = 0; frame < 2; frame++) {
+      const canvas = makeCanvas(size, size);
+      const ctx = canvas.getContext('2d');
+      paintGlyph(ctx, amuletGlyph(id));
+      ctx.fillStyle = '#FFFFFF';
+      if (frame === 0) {
+        ctx.fillRect(11 * PX, 3 * PX, PX, PX);
+        ctx.fillRect(4 * PX, 10 * PX, PX, PX);
+      } else {
+        ctx.fillRect(3 * PX, 4 * PX, PX, PX);
+        ctx.fillRect(12 * PX, 9 * PX, PX, PX);
+      }
+      scene.textures.addCanvas(`amulet-${id}-${frame}`, canvas);
+    }
+  }
+
+  // Deployed mine: dim before it arms, hot once it is live.
+  for (const [key, lamp] of [
+    ['mine-unarmed', PALETTE.uiTextMuted],
+    ['mine-armed', PALETTE.itemMedkit],
+  ]) {
+    const canvas = makeCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+    paintGlyph(ctx, [
+      [3, 8, 10, 5, PALETTE.itemMine],
+      [6, 10, 4, 2, lamp],
+    ]);
+    scene.textures.addCanvas(key, canvas);
+  }
+}
+
 export function generateAllTextures(scene) {
+  generateItemTextures(scene);
   generateCharacterAtlases(scene, PLAYER_FRAMES, 'player', PLAYER_PALETTE_KEYS);
   // Dogs are only ever owner-colored — no ghost variant (they don't spectate).
   generateCharacterAtlases(scene, DOG_FRAMES, 'dog', ['red', 'blue', 'green']);

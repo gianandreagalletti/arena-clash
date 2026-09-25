@@ -2,6 +2,7 @@
 
 import { ACTIONS } from '../config/balance.js';
 import { applyDamage, isUntargetable, damageableEntities, belongsTo } from './damage.js';
+import { damageMultiplierFor } from './effects.js';
 
 function normalizeAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -17,7 +18,7 @@ function normalizeAngle(a) {
  */
 export function performMelee(state, attacker) {
   const { arcDegrees, reachTiles } = ACTIONS.slash;
-  const damage = attacker.slashDamage;
+  const damage = attacker.slashDamage * damageMultiplierFor(state, attacker);
   const halfArcRad = ((arcDegrees / 2) * Math.PI) / 180;
   const aimAngle = Math.atan2(attacker.aimY, attacker.aimX);
 
