@@ -1,10 +1,17 @@
 // Projectile spawning, movement, aim assist, and collision (players, cover, arena edges).
+//
+// A projectile's velocity is set ONCE, at fire time, and is never written again
+// anywhere in this file — no sliding, no re-routing, no axis cancelling. It
+// travels a straight line until it hits a player, a cover block or an arena
+// edge, and is destroyed at that point. (Player movement DOES slide along
+// walls, but that lives in systems/movement.js and is not shared with this.)
 
 import {
   ACTIONS,
   TICK_RATE,
   ARENA_WIDTH_TILES,
   ARENA_HEIGHT_TILES,
+  AIM_ASSIST_ENABLED,
   AIM_ASSIST_CONE_DEGREES,
   AIM_ASSIST_MAX_BEND_DEGREES,
 } from '../config/balance.js';
@@ -19,6 +26,13 @@ const SUBSTEPS = 4; // swept-ish movement so fast projectiles don't tunnel throu
 // currently-unused config knob for a future input-layer-side implementation.
 // See README "Deviations" for details.
 
+/**
+ * Rotates the aim toward an opposing player inside the configured cone, by at
+ * most AIM_ASSIST_MAX_BEND_DEGREES. Invariants: it only ever rotates toward a
+ * *player*, never because of walls or cover, and with no player in the cone it
+ * returns the raw aim unchanged. Currently unreachable — AIM_ASSIST_ENABLED is
+ * false (see the single guard in spawnProjectile).
+ */
 function bendTowardNearestEnemy(dirX, dirY, owner, players) {
   const maxBendDeg = AIM_ASSIST_MAX_BEND_DEGREES;
   if (maxBendDeg <= 0) return { x: dirX, y: dirY };
@@ -51,11 +65,30 @@ function bendTowardNearestEnemy(dirX, dirY, owner, players) {
   return { x: Math.cos(newAngle), y: Math.sin(newAngle) };
 }
 
-/** Spawns one Shoot projectile for `owner`, applying aim assist. */
+/** True if a circle at (x, y) starts inside cover or outside the arena bounds. */
+function isInsideGeometry(x, y, radius) {
+  if (x < 0 || x > ARENA_WIDTH_TILES || y < 0 || y > ARENA_HEIGHT_TILES) return true;
+  return COVER_BLOCKS.some((block) => circleIntersectsRect(x, y, radius, block));
+}
+
+/** Spawns one Shoot projectile for `owner`, travelling exactly along the aim at fire time. */
 export function spawnProjectile(state, owner) {
   const shoot = ACTIONS.shoot;
   const mag = Math.hypot(owner.aimX, owner.aimY) || 1;
-  const aimDir = bendTowardNearestEnemy(owner.aimX / mag, owner.aimY / mag, owner, state.players);
+  const rawX = owner.aimX / mag;
+  const rawY = owner.aimY / mag;
+
+  // The one and only aim-assist guard. Disabled -> the fired direction is
+  // exactly the raw input aim, for every player and every device.
+  const aimDir = AIM_ASSIST_ENABLED
+    ? bendTowardNearestEnemy(rawX, rawY, owner, state.players)
+    : { x: rawX, y: rawY };
+
+  // A muzzle inside geometry is destroyed, never relocated — relocating is what
+  // would push a shot sideways out of a wall. Unreachable today (the muzzle is
+  // the player's center, and movement.js keeps that center clear of cover and
+  // bounds), but it's the rule if a muzzle offset is ever added.
+  if (isInsideGeometry(owner.x, owner.y, shoot.projectileRadiusTiles)) return;
 
   state.projectiles.push({
     id: state.nextProjectileId++,
@@ -63,11 +96,13 @@ export function spawnProjectile(state, owner) {
     kind: 'projectile', // 'projectile_aoe' is retained but unused this week (see explode())
     x: owner.x,
     y: owner.y,
+    // Written once, here. Nothing else ever touches vx/vy.
     vx: aimDir.x * shoot.projectileSpeedTilesPerSec,
     vy: aimDir.y * shoot.projectileSpeedTilesPerSec,
     radius: shoot.projectileRadiusTiles,
     damage: owner.shootDamage, // boost-derived, per player
-    remainingRangeTiles: shoot.rangeTiles,
+    remainingRangeTiles: shoot.rangeTiles, // null = unlimited
+    ageTicks: 0,
     explodeRadiusTiles: 0,
   });
 }
@@ -147,12 +182,14 @@ export function updateProjectiles(state) {
       stepY = py;
     }
 
-    proj.remainingRangeTiles -= totalDist;
+    proj.ageTicks += 1;
+    if (proj.remainingRangeTiles !== null) proj.remainingRangeTiles -= totalDist;
     proj.x = stepX;
     proj.y = stepY;
 
-    const outOfRange = proj.remainingRangeTiles <= 0;
-    const terminated = stopped || outOfRange;
+    const outOfRange = proj.remainingRangeTiles !== null && proj.remainingRangeTiles <= 0;
+    const expired = proj.ageTicks >= ACTIONS.shoot.maxLifetimeTicks; // leak guard only
+    const terminated = stopped || outOfRange || expired;
 
     if (terminated) {
       if (hitTarget) {

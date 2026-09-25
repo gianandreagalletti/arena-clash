@@ -24,9 +24,19 @@ export const ROUNDS_TO_WIN_MATCH = 3;
 export const FIRST_30S_WINDOW_TICKS = secToTicks(30);
 
 // --- Aim assist ---
+// DISABLED: projectiles now always fly exactly along the raw input aim. The
+// cone/bend values below are deliberately left untouched so assist can be
+// switched back on by flipping this one flag — see the single guard in
+// systems/projectiles.js (spawnProjectile).
+//
+// Why it was turned off: assist rotated the shot up to AIM_ASSIST_MAX_BEND_DEGREES
+// toward any enemy inside the cone with no line-of-sight test, so aiming at a
+// wall with an opponent roughly behind/near it sent the bullet somewhere else.
+export const AIM_ASSIST_ENABLED = false;
+
 // Detection cone (half-angle candidates must fall within to be considered) and
 // the maximum the projectile direction is allowed to bend toward that target.
-// Setting AIM_ASSIST_MAX_BEND_DEGREES to 0 disables aim assist entirely.
+// Setting AIM_ASSIST_MAX_BEND_DEGREES to 0 also disables aim assist entirely.
 export const AIM_ASSIST_CONE_DEGREES = 20;
 export const AIM_ASSIST_MAX_BEND_DEGREES = 10;
 // Per-device override: lets us tone assist down for mouse aiming later if it proves too strong.
@@ -55,7 +65,14 @@ export const ACTIONS = {
     shotsPerSec: 2,
     cooldownTicks: secToTicks(1 / 2), // 30 ticks = one shot every 0.5s
     projectileSpeedTilesPerSec: 14,
-    rangeTiles: 10,
+    // null = unlimited: a shot flies until it hits a player, cover or an arena
+    // edge. The key is kept so a finite range can be re-enabled later.
+    rangeTiles: null,
+    // Pure safety net so a projectile can never leak if it somehow misses every
+    // collision check. At 14 tiles/s this is 42 tiles — far past the arena
+    // diagonal (~28.8), so it should never trigger in normal play.
+    maxLifetimeSec: 3.0,
+    maxLifetimeTicks: secToTicks(3.0),
     projectileRadiusTiles: 0.12,
   },
   slash: {

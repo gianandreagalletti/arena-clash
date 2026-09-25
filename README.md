@@ -13,7 +13,7 @@ All three characters share the same three actions — the numbers live in
 
 | Action | Numbers |
 |---|---|
-| **Shoot** | 18 damage, 2 shots/s, projectile 14 tiles/s, 10 tile range |
+| **Shoot** | 18 damage, 2 shots/s, projectile 14 tiles/s, unlimited range — flies straight until it hits a player, cover or an arena edge |
 | **Slash** | 14 damage, 2.5 hits/s, 1.5 tile reach, 90° frontal arc, one hit per target per swing |
 | **Shield** | 2.0s active, incoming damage −70%, 6.0s cooldown starting when the shield ends; blocks Shoot/Slash while up, movement still allowed |
 
@@ -83,9 +83,11 @@ Runs the offline sim test suite (Node's built-in `node:test`, no browser, no ext
 test-runner dependency) against `tests/*.test.js`. Covers determinism, Shoot
 damage (boosted and unboosted), fire rate, Slash arc (for every character),
 Shield (70% reduction, expiry, cooldown lockout, action lockout), boost
-multipliers, collision, spawn invulnerability, round/match
-flow (including the double-knockout void case), ult charge, and a static check
-that `src/sim/` never imports Phaser/DOM/`window` or calls `Math.random`.
+multipliers, projectile flight (unlimited range, constant velocity into cover,
+no aim assist on either input device, point-blank wall), collision, spawn
+invulnerability, round/match flow (including the double-knockout void case),
+ult charge, and a static check that `src/sim/` never imports Phaser/DOM/`window`
+or calls `Math.random`.
 
 ## Changing balance values
 
@@ -235,15 +237,15 @@ smear fill the brief explicitly wants to stay white.
   satisfies 120° symmetry (and then some) but isn't a "true" rotated hexagon of
   blocks. Flagging in case the intended look was closer to a pinwheel with blocks
   actually rotated to face the center.
-- **Per-device aim-assist override (`AIM_ASSIST_ENABLED_BY_DEVICE` in balance.js)
-  is unused.** The brief says "make it overridable per device type," but also says
-  "the sim never knows which device a player uses." Those two rules conflict:
-  aim-assist bending needs enemy positions (sim state), which only `sim/` can see
-  cheaply, but `sim/` can't know device identity. The config knob is kept, documented,
-  and wired to nothing — a real per-device toggle would need the input layer to
-  pass a per-player "assist enabled" flag through the InputFrame (or a side channel),
-  which isn't in the brief's fixed InputFrame shape. Left for a conscious decision
-  rather than silently picking one interpretation.
+- **Aim assist is off** (`AIM_ASSIST_ENABLED = false`). It was removed because it
+  rotated a shot up to 10° toward any opponent inside a 20° cone with no
+  line-of-sight test, so aiming at a wall with someone roughly behind it sent the
+  bullet somewhere else. Cone/bend values are kept untouched and the bending
+  function is still there behind a single guard in `spawnProjectile`, so it can be
+  switched back on with one flag. `AIM_ASSIST_ENABLED_BY_DEVICE` remains a
+  documented, unused knob: a real per-device toggle would need the input layer to
+  pass a per-player "assist enabled" flag through the InputFrame, since `sim/`
+  deliberately can't know which device a player uses.
 - **Void-round ult charge.** The brief specifies 50% ult carry-over between rounds,
   but doesn't say what happens to ult charge on a voided (double-knockout) round
   replay. Implemented as: void rounds do **not** apply the 50%-carry reduction
