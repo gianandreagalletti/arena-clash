@@ -9,7 +9,12 @@
 // When the conversion is right, the cyan cross sits exactly under the
 // crosshair, and the white square sits on top of it.
 
-import { ARENA_WIDTH_TILES, ARENA_HEIGHT_TILES, PLAYER_RADIUS_TILES } from '../../sim/config/balance.js';
+import {
+  ARENA_WIDTH_TILES,
+  ARENA_HEIGHT_TILES,
+  PLAYER_RADIUS_TILES,
+  CHARACTERS,
+} from '../../sim/config/balance.js';
 import { COVER_BLOCKS } from '../../sim/arena.js';
 import { worldToScreenX, worldToScreenY } from '../coords.js';
 
@@ -67,6 +72,38 @@ export function createHitboxOverlay(scene) {
       for (const player of state.players) {
         if (!player.alive) continue;
         graphics.strokeCircle(worldToScreenX(player.x), worldToScreenY(player.y), radiusPx);
+      }
+
+      // Nova radius — drawn always, not only while charging, so the telegraph
+      // ring can be checked against the real number at any time.
+      for (const player of state.players) {
+        const nova = CHARACTERS[player.characterId].nova;
+        if (!nova || !player.alive) continue;
+        graphics.lineStyle(1, 0xff4444, player.charging === 'nova' ? 0.9 : 0.35);
+        graphics.strokeCircle(worldToScreenX(player.x), worldToScreenY(player.y), nova.radiusTiles * tileToPx);
+      }
+
+      // Dogs: hitbox, plus a line to the enemy they're biased toward.
+      for (const dog of state.dogs) {
+        const dx = worldToScreenX(dog.x);
+        const dy = worldToScreenY(dog.y);
+        graphics.lineStyle(1, 0x00ff88, 0.9);
+        graphics.strokeCircle(dx, dy, dog.radiusTiles * tileToPx);
+
+        let target = null;
+        let bestDist = Infinity;
+        for (const player of state.players) {
+          if (player.id === dog.ownerId || !player.alive) continue;
+          const dist = Math.hypot(player.x - dog.x, player.y - dog.y);
+          if (dist < bestDist) {
+            bestDist = dist;
+            target = player;
+          }
+        }
+        if (target) {
+          graphics.lineStyle(1, 0x00ff88, 0.4);
+          graphics.lineBetween(dx, dy, worldToScreenX(target.x), worldToScreenY(target.y));
+        }
       }
 
       // Projectiles.

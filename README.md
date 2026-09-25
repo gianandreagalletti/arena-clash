@@ -90,10 +90,10 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - Boost screen: **Gamepad** d-pad/left stick to pick a category, **A** add a point, **B** remove, **Start** to ready up (press again to un-ready). **Keyboard:** Up/Down to pick, Right to add, Left to remove, **Enter** to ready. The match starts when all three are ready.
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
-- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc) as 1px lines over the art, plus the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
+- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc, dog hitbox, nova radius — always, not just while charging) as 1px lines over the art, plus the dog's current target and the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
 - **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, **Y** character ability.
 - **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, **R** character ability.
-- **Character ability (Y / R):** Berserker casts the nova (costs ult charge), Summoner summons its dog. Sniper has none. **Neither is drawn yet** — see the note in "Deviations".
+- **Character ability (Y / R):** Berserker casts the nova (costs ult charge), Summoner summons its dog. Sniper has none. Watch the HUD: the charge bar blinks orange on "NOVA READY", and the Summoner panel shows its dog's HP or a respawn countdown.
 - A round ends when one player is left standing; first to 3 round wins takes the match. At the match-over screen, press **A** (gamepad) or **Space** to rematch (same boost allocation).
 
 ### Character selection (hardcoded this week)
@@ -223,6 +223,8 @@ code — see `src/render/art/`.
 
 ```
 player-{red|blue|green|ghost}          frames: {idle|walk}-{down|up|side}-{0|1}
+dog-{red|blue|green}                   same frame names, colored by its owner
+bite                                   white chomp burst when a dog bites
 tile-floorA / tile-floorB / tile-crack
 wall
 cover
@@ -284,15 +286,17 @@ smear fill the brief explicitly wants to stay white.
 
 ## Deviations from the brief (flagged, not silently fixed)
 
-- **The dog and the nova are invisible.** The character-differentiation brief
-  said not to touch `render/`, so nothing draws the dog, the nova windup
-  telegraph or the blast. Both abilities are fully live in the sim — the dog
-  moves, bites and dies; the nova charges and detonates — but on screen the dog
-  simply isn't there and the Berserker gives no visual tell. That last part
-  undercuts the whole design intent of a *telegraphed* AoE ("so it can be dodged
-  or punished"): right now it can't be dodged, because it can't be seen. The sim
-  exposes everything a renderer needs (`state.dogs`, `state.novaBlasts`,
-  `player.charging`); wiring it up is a render-side follow-up.
+- **`state.novaBlasts` entries carry no id.** The render pass was asked to dedupe
+  blast FX "by id", but the sim pushes `{playerId, x, y, radiusTiles, tick}`. The
+  renderer dedupes on `playerId:tick` instead, which is unique because a player
+  can only blast once on a given tick. An explicit id would be tidier, but adding
+  one means touching `sim/`, which that CR forbade.
+- **A dog bite is inferred, not signalled.** There is no bite event in state, so
+  the renderer detects one from `dog.attackCooldownTicks` jumping upward — it
+  only ever does that on the tick a bite actually lands — and draws the chomp on
+  the nearest enemy, recomputing the same "nearest targetable enemy" rule the sim
+  uses. If two players were exactly equidistant the FX could pick the other one;
+  harmless for a 3-tick flash, but an explicit event would be exact.
 - **The ability trigger needed an input change.** The brief asked for two new
   abilities but also froze `input/`. The `ult` field had been deliberately
   removed from the InputFrame in an earlier CR, so there was no way to fire

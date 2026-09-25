@@ -6,6 +6,7 @@ import { TICK_RATE } from '../../sim/config/balance.js';
 import { GAMEPAD_BUTTON_A } from '../../input/gamepad.js';
 import { createArenaRenderer } from '../arenaRenderer.js';
 import { createPlayerRenderer } from '../players/playerRenderer.js';
+import { createDogRenderer } from '../dogRenderer.js';
 import { createFxRenderer } from '../fx/fxRenderer.js';
 import { createHud, updateHud, updateDisconnectBanner } from '../hud.js';
 import { createHitboxOverlay } from '../debug/hitboxOverlay.js';
@@ -34,7 +35,9 @@ export default class GameScene extends Phaser.Scene {
 
     this.arena = createArenaRenderer(this);
     this.playerRenderer = createPlayerRenderer(this);
+    this.dogRenderer = createDogRenderer(this);
     this.fxRenderer = createFxRenderer(this);
+    this.frameEvents = { meleeSwings: [], novaBlasts: [] };
     this.hud = createHud(this);
     this.hitboxOverlay = createHitboxOverlay(this);
 
@@ -108,6 +111,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    // Transient sim events (melee swings, nova blasts) only live for the tick
+    // that produced them, and this loop can run several ticks per rendered
+    // frame. Collect them all so no FX is silently dropped during catch-up.
+    this.frameEvents = { meleeSwings: [], novaBlasts: [] };
+
     this.accumulatorMs += delta;
     let ticks = 0;
     while (this.accumulatorMs >= MS_PER_TICK && ticks < MAX_TICKS_PER_FRAME) {
@@ -119,7 +127,8 @@ export default class GameScene extends Phaser.Scene {
 
     this.arena.update(this.state.tick);
     this.playerRenderer.update(this.state);
-    this.fxRenderer.update(this.state);
+    this.dogRenderer.update(this.state);
+    this.fxRenderer.update(this.state, this.frameEvents);
     updateHud(this.hud, this.state);
     updateDisconnectBanner(this.hud, this.deviceManager.disconnectedSlots);
     this.hitboxOverlay.update(this.state, this._aimDebugInfo());
@@ -142,6 +151,11 @@ export default class GameScene extends Phaser.Scene {
 
     const prevLogCount = this.state.logs.length;
     this.state = step(this.state, frames);
+
+    // Drain this tick's transient events before the next step() clears them.
+    if (this.state.meleeSwings.length) this.frameEvents.meleeSwings.push(...this.state.meleeSwings);
+    if (this.state.novaBlasts.length) this.frameEvents.novaBlasts.push(...this.state.novaBlasts);
+
     if (this.state.logs.length > prevLogCount && this.state.pendingLogPrint) {
       printRoundLog(this.state.pendingLogPrint);
     }

@@ -49,11 +49,37 @@ function drawHpBar(graphics, x, y, w, fraction) {
   }
 }
 
-function drawUltBar(graphics, x, y, w, fraction) {
+function drawUltBar(graphics, x, y, w, fraction, ready, tick) {
   graphics.fillStyle(0x000000, 0.6);
   graphics.fillRect(x, y, w, 4);
-  graphics.fillStyle(colorInt(PALETTE.torchCore), 1);
+  // A ready ability blinks torch-orange: everyone needs to know when the
+  // Berserker can nova.
+  const blinking = ready && Math.floor(tick / 12) % 2 === 0;
+  graphics.fillStyle(colorInt(blinking ? PALETTE.torchBase : PALETTE.torchCore), 1);
   graphics.fillRect(x, y, w * fraction, 4);
+}
+
+/** The ability a character has, if any, as {label, ready} — or null. */
+function abilityStatus(state, player) {
+  const def = CHARACTERS[player.characterId];
+
+  if (def.nova) {
+    const ready = player.ultCharge >= def.nova.ultCost;
+    if (player.charging === 'nova') return { label: 'NOVA CHARGING', ready: true };
+    return { label: ready ? 'NOVA READY' : `NOVA ${Math.floor(player.ultCharge)}/${def.nova.ultCost}`, ready };
+  }
+
+  if (def.dog) {
+    const dog = state.dogs.find((d) => d.ownerId === player.id && d.alive);
+    if (dog) {
+      return { label: `DOG ${Math.ceil(dog.hp)}/${dog.maxHp}`, ready: false, barFraction: dog.hp / dog.maxHp };
+    }
+    const waitTicks = player.dogReadyAtTick - state.tick;
+    if (waitTicks > 0) return { label: `DOG ${Math.ceil(waitTicks / TICK_RATE)}s`, ready: false };
+    return { label: 'DOG READY', ready: true };
+  }
+
+  return null;
 }
 
 function drawRoundPips(graphics, x, y, wins) {
@@ -94,11 +120,31 @@ export function updateHud(hud, state) {
     const panel = hud.playerPanels[i];
     const def = CHARACTERS[player.characterId];
 
+    const ability = abilityStatus(state, player);
+
     panel.graphics.clear();
     drawPanel(panel.graphics, panel.x, panel.y, PANEL_W, PANEL_H);
     drawHpBar(panel.graphics, panel.x + 6, panel.y + 16, PANEL_W - 12, Math.max(0, player.hp / player.maxHp));
-    drawUltBar(panel.graphics, panel.x + 6, panel.y + 26, PANEL_W - 12, player.ultCharge / 100);
+    drawUltBar(
+      panel.graphics,
+      panel.x + 6,
+      panel.y + 26,
+      PANEL_W - 12,
+      player.ultCharge / 100,
+      !!(ability && ability.ready),
+      state.tick
+    );
     drawRoundPips(panel.graphics, panel.x + 6, panel.y + 34, player.roundsWon);
+
+    // A live dog gets its own mini HP bar next to the round pips.
+    if (ability && ability.barFraction !== undefined) {
+      const barX = panel.x + 6 + ROUNDS_TO_WIN_MATCH * 10 + 6;
+      const barW = 40;
+      panel.graphics.fillStyle(0x000000, 0.6);
+      panel.graphics.fillRect(barX, panel.y + 36, barW, 4);
+      panel.graphics.fillStyle(colorInt(def.color), 1);
+      panel.graphics.fillRect(barX, panel.y + 36, barW * ability.barFraction, 4);
+    }
 
     panel.nameText.setText(`P${i + 1} ${def.name}`);
     panel.nameText.setColor(def.color);
@@ -109,7 +155,8 @@ export function updateHud(hud, state) {
     else if (state.tick < player.shieldReadyAtTick) {
       shieldLabel = `SHIELD ${Math.ceil((player.shieldReadyAtTick - state.tick) / TICK_RATE)}s`;
     } else shieldLabel = 'SHIELD OK';
-    panel.shieldText.setText(shieldLabel);
+    panel.shieldText.setText(ability ? `${shieldLabel}  ${ability.label}` : shieldLabel);
+    panel.shieldText.setColor(ability && ability.ready ? PALETTE.torchCore : PALETTE.uiTextMuted);
   });
 
   hud.bannerBg.clear();

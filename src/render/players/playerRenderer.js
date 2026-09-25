@@ -112,7 +112,10 @@ export function createPlayerRenderer(scene) {
         const frameIndex = Math.floor(state.tick / frameTicks) % 2;
         const frameName = `${moving ? 'walk' : 'idle'}-${facing}-${frameIndex}`;
 
-        visual.body.setPosition(screenX, screenY);
+        // 1px horizontal shake while winding up an ability — a position
+        // offset, never a rotation (rotating pixel art smears it).
+        const windupShake = player.charging !== null && state.tick % 4 < 2 ? 1 : 0;
+        visual.body.setPosition(screenX + windupShake, screenY);
         visual.body.setTexture(`player-${paletteKey}`, frameName);
         visual.body.setFlipX(flipX);
         visual.body.setVisible(true);

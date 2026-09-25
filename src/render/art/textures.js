@@ -14,6 +14,8 @@
 //
 // Texture key contract:
 //   player-{red|blue|green|ghost}   frames idle|walk-down|up|side-0|1
+//   dog-{red|blue|green}            same frame names, colored by its owner
+//   bite                            white chomp burst when a dog lands a bite
 //   tile-floorA / tile-floorB / tile-crack
 //   wall
 //   cover
@@ -26,7 +28,7 @@
 //   (the ghost palette has no proj-/slash-/shield-/particle- variant — eliminated players don't attack)
 
 import { PALETTE, PLAYER_PALETTE_KEYS } from './palette.js';
-import { PLAYER_FRAMES, PLAYER_FRAME_SIZE, LEGEND } from './sprites.js';
+import { PLAYER_FRAMES, DOG_FRAMES, PLAYER_FRAME_SIZE, LEGEND } from './sprites.js';
 import { TILE_SIZE_PX, ACTIONS, PLAYER_RADIUS_TILES } from '../../sim/config/balance.js';
 
 const PX = 2; // authored-pixel -> screen-pixel block size (16 authored px * 2 = 32 = TILE_SIZE_PX)
@@ -71,14 +73,19 @@ function paintGrid(ctx, grid, originX, originY, paletteSet) {
 
 // --- Players: one atlas per palette (red/blue/green/ghost), 12 named frames each ---
 
-function generatePlayerTextures(scene) {
-  const frameNames = Object.keys(PLAYER_FRAMES);
+/**
+ * Builds one palette-swapped atlas per color from a {frameName: grid} map.
+ * Players and dogs share this so a dog is colored by its owner exactly the way
+ * a player is — same grids format, same legend, same swap.
+ */
+function generateCharacterAtlases(scene, frames, keyPrefix, paletteKeys) {
+  const frameNames = Object.keys(frames);
   const cols = 4;
   const rows = Math.ceil(frameNames.length / cols);
   const cellSize = PLAYER_FRAME_SIZE * PX; // 32
   const canvas = makeCanvas(cellSize * cols, cellSize * rows);
 
-  for (const key of PLAYER_PALETTE_KEYS) {
+  for (const key of paletteKeys) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const paletteSet = PALETTE[key];
@@ -89,11 +96,11 @@ function generatePlayerTextures(scene) {
       const row = Math.floor(i / cols);
       const originX = col * cellSize;
       const originY = row * cellSize;
-      paintGrid(ctx, PLAYER_FRAMES[name], originX, originY, paletteSet);
+      paintGrid(ctx, frames[name], originX, originY, paletteSet);
       regions[name] = { x: originX, y: originY, w: cellSize, h: cellSize };
     });
 
-    const textureKey = `player-${key}`;
+    const textureKey = `${keyPrefix}-${key}`;
     if (scene.textures.exists(textureKey)) scene.textures.remove(textureKey);
     const texture = scene.textures.addCanvas(textureKey, cloneCanvas(canvas));
     for (const [name, r] of Object.entries(regions)) {
@@ -350,8 +357,26 @@ function generateParticleTextures(scene) {
   }
 }
 
+/** A short white "chomp" burst drawn on a player the moment a dog bites them. */
+function generateBiteTexture(scene) {
+  const size = 12;
+  const canvas = makeCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  // Two opposing jaws of blocky teeth.
+  for (const [x, y] of [[1, 1], [4, 2], [7, 1], [10, 2], [1, 9], [4, 8], [7, 9], [10, 8]]) {
+    ctx.fillRect(x, y, 2, 2);
+  }
+  ctx.fillStyle = PALETTE.outline;
+  ctx.fillRect(2, 5, 8, 2);
+  scene.textures.addCanvas('bite', canvas);
+}
+
 export function generateAllTextures(scene) {
-  generatePlayerTextures(scene);
+  generateCharacterAtlases(scene, PLAYER_FRAMES, 'player', PLAYER_PALETTE_KEYS);
+  // Dogs are only ever owner-colored — no ghost variant (they don't spectate).
+  generateCharacterAtlases(scene, DOG_FRAMES, 'dog', ['red', 'blue', 'green']);
+  generateBiteTexture(scene);
   generateFloorTextures(scene);
   generateWallTexture(scene);
   const coverMeta = generateCoverTexture(scene);
