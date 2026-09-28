@@ -1,7 +1,7 @@
 // Maps a Phaser 3 Gamepad instance (Xbox-standard layout) to an InputFrame.
 // Left stick: move · Right stick: aim (holds last direction when idle) ·
 // RT: Shoot (hold) · RB: Slash · LB: Shield · Y: character ability (ult) ·
-// X: use the item in the slot.
+// X: use the item in the slot · LT: Skill 1 · R3 (right stick click): Skill 2.
 
 import { STICK_DEADZONE } from '../sim/config/balance.js';
 
@@ -17,7 +17,7 @@ function applyDeadzone(v) {
  */
 export function readGamepadFrame(pad) {
   if (!pad) {
-    return { moveX: 0, moveY: 0, aimX: 0, aimY: 0, fire: false, slash: false, shield: false, ult: false, item: false };
+    return { moveX: 0, moveY: 0, aimX: 0, aimY: 0, fire: false, slash: false, shield: false, ult: false, item: false, skill1: false, skill2: false, draftPick: null };
   }
 
   return {
@@ -30,6 +30,10 @@ export function readGamepadFrame(pad) {
     shield: !!pad.L1, // LB
     ult: !!pad.Y, // character ability
     item: !!pad.X, // use item
+    skill1: pad.L2 > 0.5, // LT
+    // Guarded because not every controller reports a full Xbox-standard button
+    // array — a missing stick click should read as "not pressed", not crash.
+    skill2: !!(pad.buttons && pad.buttons[GAMEPAD_BUTTON_R3] && pad.buttons[GAMEPAD_BUTTON_R3].pressed),
   };
 }
 
@@ -37,3 +41,4 @@ export function readGamepadFrame(pad) {
 export const GAMEPAD_BUTTON_A = 0;
 export const GAMEPAD_BUTTON_B = 1;
 export const GAMEPAD_BUTTON_START = 9;
+export const GAMEPAD_BUTTON_R3 = 11; // right stick click

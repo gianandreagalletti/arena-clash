@@ -14,6 +14,7 @@ import {
   AIM_ASSIST_ENABLED,
   AIM_ASSIST_CONE_DEGREES,
   AIM_ASSIST_MAX_BEND_DEGREES,
+  abilityConfig,
 } from '../config/balance.js';
 import { COVER_BLOCKS, circleIntersectsRect } from '../arena.js';
 import { applyDamage, isUntargetable, damageableEntities, belongsTo } from './damage.js';
@@ -75,8 +76,12 @@ function isInsideGeometry(x, y, radius) {
   return COVER_BLOCKS.some((block) => circleIntersectsRect(x, y, radius, block));
 }
 
-/** Spawns one Shoot projectile for `owner`, travelling exactly along the aim at fire time. */
-export function spawnProjectile(state, owner) {
+/**
+ * Spawns one Shoot projectile for `owner`, travelling exactly along the aim at
+ * fire time. `options.damageMult` scales it (Charged Shot); `options.abilityId`
+ * tags it so damage can be attributed to that ability in the log.
+ */
+export function spawnProjectile(state, owner, options = {}) {
   const shoot = ACTIONS.shoot;
   const mag = Math.hypot(owner.aimX, owner.aimY) || 1;
   const rawX = owner.aimX / mag;
@@ -105,13 +110,25 @@ export function spawnProjectile(state, owner) {
     vx: aimDir.x * owner.shootProjectileSpeed,
     vy: aimDir.y * owner.shootProjectileSpeed,
     radius: shoot.projectileRadiusTiles,
-    // Boost/amulet-derived, times any active Overcharge. Locked in at fire
-    // time, so an Overcharge expiring mid-flight does not weaken the shot.
-    damage: owner.shootDamage * damageMultiplierFor(state, owner),
-    remainingRangeTiles: shoot.rangeTiles, // null = unlimited
+    // Boost/amulet-derived, times any active Overcharge and any Charged Shot
+    // multiplier. Locked in at fire time, so an Overcharge expiring mid-flight
+    // does not weaken the shot.
+    damage: owner.shootDamage * damageMultiplierFor(state, owner) * (options.damageMult || 1),
+    remainingRangeTiles: owner.shootRangeTiles, // null = unlimited
     ageTicks: 0,
     explodeRadiusTiles: 0,
+    abilityId: options.abilityId || null,
+    // Piercing Rounds: the shot survives its first victim and hits one more,
+    // at a reduced multiplier. Cover still stops it either way.
+    piercing: owner.abilities.passives.includes('piercing'),
+    secondHitMult: piercingSecondHitMult(owner),
+    hitIds: [],
   });
+}
+
+function piercingSecondHitMult(owner) {
+  const config = abilityConfig(owner.characterId, 'piercing');
+  return config ? config.secondHitMult : 1;
 }
 
 /**
@@ -170,18 +187,26 @@ export function updateProjectiles(state) {
       }
       if (stopped) break;
 
-      // Players and dogs alike (skipping the shooter's own entities).
+      // Players and summons alike (skipping the shooter's own entities).
+      // Damage lands HERE rather than after the loop, because a piercing round
+      // has to keep flying past the target it just hit.
       for (const target of damageableEntities(state)) {
         if (belongsTo(target, proj.ownerId)) continue;
         if (isUntargetable(state, target)) continue;
+        const key = `${target.kind}:${target.id}`;
+        if (proj.hitIds.includes(key)) continue; // never hit the same target twice
         const dist = Math.hypot(target.x - px, target.y - py);
-        if (dist <= proj.radius + target.radiusTiles) {
-          stepX = px;
-          stepY = py;
-          stopped = true;
-          hitTarget = target;
-          break;
-        }
+        if (dist > proj.radius + target.radiusTiles) continue;
+
+        const isSecondHit = proj.hitIds.length > 0;
+        applyDamage(state, target, proj.damage * (isSecondHit ? proj.secondHitMult : 1), owner);
+        proj.hitIds.push(key);
+        stepX = px;
+        stepY = py;
+        hitTarget = target;
+        // A piercing round survives exactly one pass-through.
+        if (!proj.piercing || proj.hitIds.length >= 2) stopped = true;
+        break;
       }
       if (stopped) break;
 
@@ -199,17 +224,9 @@ export function updateProjectiles(state) {
     const terminated = stopped || outOfRange || expired;
 
     if (terminated) {
-      if (hitTarget) {
-        if (proj.kind === 'projectile_aoe') {
-          explode(state, proj, proj.x, proj.y);
-        } else {
-          applyDamage(state, hitTarget, proj.damage, owner);
-        }
-      } else if (proj.kind === 'projectile_aoe') {
-        // Impact with cover, arena edge, or max range still explodes.
-        explode(state, proj, proj.x, proj.y);
-      }
-      // Non-AoE projectiles that hit cover/edge/max-range without a target simply vanish.
+      // Direct-hit damage already landed inside the substep loop (see above).
+      // AoE rounds additionally detonate wherever they stopped.
+      if (proj.kind === 'projectile_aoe') explode(state, proj, proj.x, proj.y);
     } else {
       surviving.push(proj);
     }

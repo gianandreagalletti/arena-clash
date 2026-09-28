@@ -1,6 +1,6 @@
 // Slash: instantaneous frontal-arc melee attack. Shared by all characters.
 
-import { ACTIONS } from '../config/balance.js';
+import { ACTIONS, abilityConfig } from '../config/balance.js';
 import { applyDamage, isUntargetable, damageableEntities, belongsTo } from './damage.js';
 import { damageMultiplierFor } from './effects.js';
 
@@ -17,8 +17,14 @@ function normalizeAngle(a) {
  * Damage comes from the attacker's boost-derived `slashDamage`.
  */
 export function performMelee(state, attacker) {
-  const { arcDegrees, reachTiles } = ACTIONS.slash;
+  const { arcDegrees } = ACTIONS.slash;
+  // Reach is owner-derived so Longsword extends it (see state.js).
+  const reachTiles = attacker.slashReachTiles;
   const damage = attacker.slashDamage * damageMultiplierFor(state, attacker);
+  const bloodthirst = attacker.abilities.passives.includes('bloodthirst')
+    ? abilityConfig(attacker.characterId, 'bloodthirst')
+    : null;
+  let healed = 0;
   const halfArcRad = ((arcDegrees / 2) * Math.PI) / 180;
   const aimAngle = Math.atan2(attacker.aimY, attacker.aimX);
 
@@ -37,8 +43,12 @@ export function performMelee(state, attacker) {
       if (diff > halfArcRad) continue;
     }
 
-    applyDamage(state, target, damage, attacker);
+    const dealt = applyDamage(state, target, damage, attacker);
+    // Bloodthirst drinks a share of what actually landed, after Shield.
+    if (bloodthirst && dealt > 0) healed += dealt * bloodthirst.healFraction;
   }
+
+  if (healed > 0) attacker.hp = Math.min(attacker.maxHp, attacker.hp + healed);
 
   state.meleeSwings.push({
     playerId: attacker.id,

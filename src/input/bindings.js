@@ -16,6 +16,8 @@ export const BINDINGS = [
   { action: 'Shield', gamepad: 'LB', keyboard: 'Q' },
   { action: 'Ultimate', gamepad: 'Y', keyboard: 'R' },
   { action: 'Use item', gamepad: 'X', keyboard: 'F' },
+  { action: 'Skill 1', gamepad: 'LT', keyboard: 'Right click' },
+  { action: 'Skill 2', gamepad: 'R3 (right stick click)', keyboard: 'Space' },
   { action: 'Join / Confirm', gamepad: 'A', keyboard: 'Enter' },
   { action: 'Leave / Back', gamepad: 'B', keyboard: 'Esc' },
   { action: 'Help', gamepad: 'View', keyboard: 'H' },

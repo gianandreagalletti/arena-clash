@@ -11,6 +11,7 @@ import {
 import { SPAWN_POINTS } from '../arena.js';
 import { buildRoundLog } from '../log.js';
 import { armPickupSpawners, clearRoundPickups } from './pickups.js';
+import { beginDraft } from './draft.js';
 import { createPickupTallies } from '../state.js';
 
 /**
@@ -45,6 +46,16 @@ function resetPlayerForRound(player) {
   player.item = null;
   player.itemHeldLastTick = false;
   player.effects = { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0 };
+  // Skills reset per round: cooldowns, held state, charges and dashes all go.
+  player.skillCooldowns = player.skillCooldowns.map(() => 0);
+  player.skillsHeldLastTick = [false, false];
+  player.chargingSkill = null;
+  player.dash = null;
+  player.poisonUntilTick = 0;
+  player.poisonDps = 0;
+  player.poisonSourceId = null;
+  player.abilityUses = {};
+  player.damageByAbility = {};
   player.pickupsCollected = createPickupTallies();
   player.itemsUsed = { grenade: 0, mine: 0 };
   player.damageByExplosive = { grenade: 0, mine: 0 };
@@ -59,6 +70,9 @@ export function beginRound(state, { carryUlt }) {
     resetPlayerForRound(player);
   }
   state.dogs = []; // minions don't survive a round boundary
+  state.vipers = [];
+  state.traps = [];
+  state.draft = null;
   state.projectiles = [];
   clearRoundPickups(state); // map items, live explosives and spawner timers
   state.roundState = 'countdown';
@@ -96,6 +110,13 @@ export function checkRoundEnd(state) {
   }
 }
 
+/** Closes the draft and rolls into the next round's countdown. */
+export function finishDraft(state) {
+  state.draft = null;
+  state.roundNumber += 1;
+  beginRound(state, { carryUlt: true });
+}
+
 export function tickRecap(state) {
   state.roundStateTimerTicks -= 1;
   if (state.roundStateTimerTicks <= 0) {
@@ -104,8 +125,10 @@ export function tickRecap(state) {
       state.roundState = 'matchOver';
       state.matchWinner = winner.id;
     } else {
-      state.roundNumber += 1;
-      beginRound(state, { carryUlt: true });
+      // Every non-final, non-voided round is followed by a draft. A voided
+      // round never reaches recap at all (it restarts immediately), so this
+      // branch only ever runs after a real result.
+      beginDraft(state);
     }
   }
 }

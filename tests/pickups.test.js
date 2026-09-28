@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { step, newPlayingGame, clearInvuln, makeInput, neutralInputs, createInitialState } from './helpers.js';
+import {
+  step,
+  newPlayingGame,
+  clearInvuln,
+  makeInput,
+  neutralInputs,
+  createInitialState,
+  advanceToNextRound,
+} from './helpers.js';
 import { applyPickup } from '../src/sim/systems/pickups.js';
 import { recomputeDerivedStats } from '../src/sim/state.js';
 import { COVER_BLOCKS, circleIntersectsRect, SPAWN_CANDIDATE_TILES } from '../src/sim/arena.js';
@@ -620,11 +628,7 @@ test('persistence: amulets survive rounds and death; everything temporary does n
   assert.strictEqual(state.roundState, 'recap');
 
   // Roll into the next round.
-  let guard = 0;
-  while (state.roundState !== 'playing' && guard < 2000) {
-    state = step(state, neutralInputs());
-    guard += 1;
-  }
+  state = advanceToNextRound(state); // through recap AND the draft
 
   const next = state.players[0];
   assert.strictEqual(next.amulets.amuletBlade, 2, 'amulets carry into the next round');

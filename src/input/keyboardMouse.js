@@ -1,6 +1,7 @@
 // Maps keyboard + mouse state to an InputFrame.
 // WASD: move · Mouse: aim toward the cursor · Left click (hold): Shoot ·
-// E: Slash · Q: Shield · R: character ability (ult) · F: use item.
+// E: Slash · Q: Shield · R: character ability (ult) · F: use item ·
+// Right click: Skill 1 · Space: Skill 2.
 //
 // Diagonal move normalization is handled centrally in sim/systems/movement.js
 // (the sim is the single authority on movement math), so this layer just
@@ -13,13 +14,14 @@
 // input/ never learned about.
 
 /**
- * `keys`: { w, a, s, d, q, e, r, f } booleans.
+ * `keys`: { w, a, s, d, q, e, r, f, space } booleans.
  * `aimWorld`: { x, y } in TILES — where the crosshair is, in world space.
  * `playerWorld`: { x, y } in tiles — the player's current *sim* position (not
  * the sprite position: the sprite's anchor and idle bob are visual only).
  * `mouseDown`: boolean, left mouse button held.
+ * `rightMouseDown`: boolean, right mouse button held (Skill 1).
  */
-export function readKeyboardMouseFrame(keys, aimWorld, playerWorld, mouseDown) {
+export function readKeyboardMouseFrame(keys, aimWorld, playerWorld, mouseDown, rightMouseDown = false) {
   const moveX = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
   const moveY = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
 
@@ -39,5 +41,8 @@ export function readKeyboardMouseFrame(keys, aimWorld, playerWorld, mouseDown) {
     shield: !!keys.q,
     ult: !!keys.r,
     item: !!keys.f,
+    skill1: !!rightMouseDown,
+    skill2: !!keys.space,
+    draftPick: null, // the draft screen supplies this directly, not the mapper
   };
 }

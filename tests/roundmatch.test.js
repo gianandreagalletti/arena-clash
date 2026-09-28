@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState } from '../src/sim/state.js';
-import { step, neutralInputs } from './helpers.js';
+import { step, neutralInputs, skipDraft } from './helpers.js';
 import { applyDamage } from '../src/sim/systems/damage.js';
 import { checkRoundEnd, tickRecap } from '../src/sim/systems/round.js';
 
@@ -31,6 +31,10 @@ test('round/match: last player alive wins the round, and 3 round wins end the ma
 
     if (round < 3) {
       assert.strictEqual(state.pendingMatchOver, false);
+      // A finished round now opens the between-round draft before the next
+      // countdown; the match-winning round skips it entirely (see below).
+      assert.strictEqual(state.roundState, 'draft');
+      state = skipDraft(state);
       assert.strictEqual(state.roundState, 'countdown');
       assert.strictEqual(state.roundNumber, round + 1);
       for (const p of state.players) assert.strictEqual(p.alive, true);

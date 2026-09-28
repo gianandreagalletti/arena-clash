@@ -5,7 +5,13 @@
 // Math.random — so a given seed always produces the same path, like everything
 // else in sim/.
 
-import { TICK_RATE, CHARACTERS, ARENA_WIDTH_TILES, ARENA_HEIGHT_TILES } from '../config/balance.js';
+import {
+  TICK_RATE,
+  CHARACTERS,
+  ARENA_WIDTH_TILES,
+  ARENA_HEIGHT_TILES,
+  abilityConfig,
+} from '../config/balance.js';
 import { COVER_BLOCKS, clamp, pushCircleOutOfRect } from '../arena.js';
 import { applyDamage, isUntargetable } from './damage.js';
 import { nextRandom } from '../rng.js';
@@ -35,8 +41,9 @@ export function summonDog(state, owner) {
     x: owner.x,
     y: owner.y,
     radiusTiles: cfg.radiusTiles,
-    hp: cfg.hp,
-    maxHp: cfg.hp,
+    // Owner-derived, so Alpha Dog scales it (see state.js recomputeDerivedStats).
+    hp: owner.dogMaxHp,
+    maxHp: owner.dogMaxHp,
     alive: true,
     attackCooldownTicks: 0,
   });
@@ -95,13 +102,19 @@ function moveDog(state, dog, cfg) {
   return target;
 }
 
-function tryBite(state, dog, cfg, target) {
+function tryBite(state, dog, cfg, target, owner) {
   if (!target || dog.attackCooldownTicks > 0) return;
   const dist = Math.hypot(target.x - dog.x, target.y - dog.y);
   if (dist > cfg.attackRangeTiles + target.radiusTiles) return;
 
-  applyDamage(state, target, cfg.damage, dog); // credited to the Summoner, see damage.js
+  const dealt = applyDamage(state, target, owner.dogBiteDamage, dog); // credited to the Summoner
   dog.attackCooldownTicks = cfg.attackCooldownTicks;
+
+  // Bone Meal: the Summoner drinks a share of what the dog lands.
+  const boneMeal = abilityConfig(owner.characterId, 'boneMeal');
+  if (dealt > 0 && owner.abilities.passives.includes('boneMeal')) {
+    owner.hp = Math.min(owner.maxHp, owner.hp + dealt * boneMeal.healFraction);
+  }
 }
 
 /** Advances every live dog one tick, then reaps the dead and starts their owner's respawn cooldown. */
@@ -119,7 +132,7 @@ export function updateDogs(state) {
 
     const cfg = dogConfigFor(owner.characterId);
     const target = moveDog(state, dog, cfg);
-    tryBite(state, dog, cfg, target);
+    tryBite(state, dog, cfg, target, owner);
   }
 
   const dead = state.dogs.filter((d) => !d.alive);
@@ -127,7 +140,7 @@ export function updateDogs(state) {
     const owner = state.players.find((p) => p.id === dog.ownerId);
     if (!owner) continue;
     const cfg = dogConfigFor(owner.characterId);
-    owner.dogReadyAtTick = state.tick + cfg.respawnCooldownTicks;
+    owner.dogReadyAtTick = state.tick + owner.dogRespawnTicks; // Pack Leader shortens this
   }
   if (dead.length > 0) state.dogs = state.dogs.filter((d) => d.alive);
 }

@@ -1,12 +1,13 @@
 // Central damage application: HP, ult charge, elimination bookkeeping, no self-damage.
 //
 // Works on any "damageable entity", tagged with `kind`:
-//   'player' — full path: spawn invuln, Shield reduction, damage stats, ult
-//              charge, elimination credit.
-//   'dog'    — Summoner minion: HP and death only. It has no invuln, no shield
-//              and no meters of its own.
-// Both go through this one function on purpose: the dog is hit by exactly the
-// same projectile/slash code paths a player is.
+//   'player'        — full path: spawn invuln, Shield reduction, damage stats,
+//                     ult charge, elimination credit.
+//   'dog' / 'viper' — Summoner summons: HP and death only. No invuln, no
+//                     shield, no meters of their own; damage they deal and
+//                     take is credited to their owner.
+// They all go through this one function on purpose: a summon is hit by exactly
+// the same projectile/slash/explosion code paths a player is.
 
 import {
   ACTIONS,
@@ -33,12 +34,14 @@ function creditFor(state, source) {
   return state.players.find((p) => p.id === source.ownerId) || null;
 }
 
-/** True if `a` and `b` are the same entity, or a player and their own dog. */
+/** A summon belongs to its owner; a player is their own owner. */
+function ownerOf(entity) {
+  return entity.ownerId !== undefined ? entity.ownerId : entity.id;
+}
+
 function isFriendly(a, b) {
   if (!a || !b) return false;
-  const aOwner = a.kind === 'dog' ? a.ownerId : a.id;
-  const bOwner = b.kind === 'dog' ? b.ownerId : b.id;
-  return aOwner === bOwner;
+  return ownerOf(a) === ownerOf(b);
 }
 
 /**
@@ -57,6 +60,9 @@ export function applyDamage(state, target, amount, source) {
   if (amount <= 0) return 0;
   if (isFriendly(target, source)) return 0;
   if (target.kind === 'player' && state.tick < target.invulnUntilTick) return 0;
+  // A Sniper mid-Roll ignores damage outright (checked inline rather than via
+  // systems/abilities.js, which imports this module).
+  if (target.dash && target.dash.invulnerable) return 0;
 
   const effective = isShielded(state, target) ? amount * (1 - ACTIONS.shield.damageReduction) : amount;
 
@@ -106,10 +112,10 @@ export function isUntargetable(state, entity) {
 
 /** Every entity a projectile or slash can hit this tick: players and live dogs. */
 export function damageableEntities(state) {
-  return [...state.players, ...state.dogs];
+  return [...state.players, ...state.dogs, ...state.vipers];
 }
 
 /** True if `entity` belongs to the player with id `playerId` (that player, or their dog). */
 export function belongsTo(entity, playerId) {
-  return entity.kind === 'dog' ? entity.ownerId === playerId : entity.id === playerId;
+  return ownerOf(entity) === playerId;
 }

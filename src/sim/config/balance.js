@@ -137,9 +137,11 @@ export const PICKUPS = {
   },
 
   amulets: {
-    firstSpawnTicks: secToTicks(10.0),
-    intervalMinTicks: secToTicks(12.0),
-    intervalMaxTicks: secToTicks(20.0),
+    // Rarer since the between-round draft became the main source of power
+    // growth — amulets are now a bonus on top, not the whole progression.
+    firstSpawnTicks: secToTicks(15.0),
+    intervalMinTicks: secToTicks(20.0),
+    intervalMaxTicks: secToTicks(30.0),
     maxOnMap: 1,
     weights: {
       amuletSpeed: 1,
@@ -169,6 +171,102 @@ export const TEMPORARY_PICKUP_IDS = Object.keys(PICKUPS.temporary.weights);
 export const AMULET_IDS = Object.keys(PICKUPS.amulets.weights);
 /** Pickups that occupy the single item slot instead of applying instantly. */
 export const USABLE_PICKUP_IDS = ['grenade', 'mine'];
+
+// --- Between-round draft ---
+// After every non-final, non-voided round each player takes +1 stat point and
+// one ability out of three offered. Picks happen one at a time, worst-placed
+// last, so the losers get to react to what everyone else took.
+export const DRAFT = {
+  turnTimeTicks: secToTicks(20.0), // per player
+  offersPerDraft: 3,
+  activeSlots: 2,
+};
+
+// --- Abilities ---
+// Five per character, drawn three at a time. `type` decides how it is held:
+//   'passive' — modifies stats/actions, no button, unlimited
+//   'active'  — occupies one of DRAFT.activeSlots, has a cooldown
+//
+// Every number is a playtesting starting point. Ability effects multiply with
+// boosts, amulets and timed pickups as separate factors (see README).
+export const ABILITIES = {
+  summoner: {
+    viper: {
+      type: 'active',
+      name: 'Viper',
+      cooldownTicks: secToTicks(14.0),
+      hp: 25,
+      lifetimeTicks: secToTicks(10.0),
+      speedTilesPerSec: 5.0,
+      biteDamage: 4,
+      biteIntervalTicks: secToTicks(1.0),
+      biteRangeTiles: 0.8,
+      radiusTiles: 0.25,
+      poisonDps: 3,
+      poisonDurationTicks: secToTicks(3.0),
+    },
+    thornTrap: {
+      type: 'active',
+      name: 'Thorn Trap',
+      cooldownTicks: secToTicks(12.0),
+      armTicks: secToTicks(0.5),
+      radiusTiles: 1.0,
+      enterDamage: 5,
+      slowMult: 0.6,
+      durationTicks: secToTicks(8.0),
+    },
+    alphaDog: { type: 'passive', name: 'Alpha Dog', hpMult: 1.4, biteMult: 1.25 },
+    boneMeal: { type: 'passive', name: 'Bone Meal', healFraction: 0.3 },
+    packLeader: { type: 'passive', name: 'Pack Leader', respawnMult: 0.6 },
+  },
+  berserker: {
+    longsword: { type: 'passive', name: 'Longsword', reachBonusTiles: 0.5 },
+    greatsword: { type: 'passive', name: 'Greatsword', damageMult: 1.25, rateMult: 0.8 },
+    charge: {
+      type: 'active',
+      name: 'Charge',
+      cooldownTicks: secToTicks(8.0),
+      distanceTiles: 4.0,
+      durationTicks: secToTicks(0.25),
+      damage: 20,
+    },
+    whirlwind: { type: 'active', name: 'Whirlwind', cooldownTicks: secToTicks(10.0), damage: 20 },
+    bloodthirst: { type: 'passive', name: 'Bloodthirst', healFraction: 0.2 },
+  },
+  sniper: {
+    vanish: { type: 'active', name: 'Vanish', cooldownTicks: secToTicks(15.0), durationTicks: secToTicks(3.0) },
+    roll: {
+      type: 'active',
+      name: 'Roll',
+      cooldownTicks: secToTicks(5.0),
+      distanceTiles: 2.5,
+      durationTicks: secToTicks(0.2),
+    },
+    chargedShot: {
+      type: 'active',
+      name: 'Charged Shot',
+      hold: true,
+      cooldownTicks: secToTicks(6.0),
+      maxChargeTicks: secToTicks(1.0),
+      moveMult: 0.5,
+      minMult: 1.0,
+      maxMult: 2.2,
+    },
+    piercing: { type: 'passive', name: 'Piercing Rounds', secondHitMult: 0.7 },
+    focus: { type: 'passive', name: 'Focus', rangeBonusTiles: 3.0, speedMult: 1.2 },
+  },
+};
+
+/** Every ability id for a character, in pool order. */
+export function abilityPoolFor(characterId) {
+  return Object.keys(ABILITIES[characterId] || {});
+}
+
+/** One ability's config, or null. */
+export function abilityConfig(characterId, abilityId) {
+  const pool = ABILITIES[characterId];
+  return (pool && pool[abilityId]) || null;
+}
 
 // --- Pre-match boost allocation ---
 // Each player spends BOOST_POINTS_PER_PLAYER points across these categories.

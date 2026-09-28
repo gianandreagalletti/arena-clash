@@ -7,6 +7,7 @@ import {
   BOOST_CATEGORIES,
   BOOST_BONUS_PER_POINT,
   BOOST_POINTS_PER_PLAYER,
+  abilityConfig,
   PICKUPS,
   AMULET_IDS,
   TEMPORARY_PICKUP_IDS,
@@ -71,15 +72,50 @@ export function recomputeDerivedStats(player) {
   const per = PICKUPS.amulets.perStack;
   const a = player.amulets;
 
-  player.maxHp = def.hp * boostMultiplier(player.boosts, 'hp') * (1 + per.hp * a.amuletVitality);
-  player.speedTilesPerSec =
-    def.speedTilesPerSec * boostMultiplier(player.boosts, 'speed') * (1 + per.speed * a.amuletSpeed);
-  player.shootDamage =
-    shoot.damage * boostMultiplier(player.boosts, 'shootDmg') * (1 + per.shoot * a.amuletMarksman);
+  // Drafted stat points sit alongside the pre-match allocation and are summed
+  // here. They are kept separate on purpose: the pre-match screen validates
+  // its 10-point budget, while draft points deliberately have no cap and may
+  // push a category past 10.
+  const points = (category) => player.boosts[category] + player.statPicks[category];
+  const boostMul = (category) => 1 + BOOST_BONUS_PER_POINT[category] * points(category);
+
+  // Owned passive abilities, as plain multipliers (1 when not owned).
+  const has = (id) => player.abilities.passives.includes(id);
+  const cfg = (id) => abilityConfig(player.characterId, id);
+  const greatsword = has('greatsword') ? cfg('greatsword') : null;
+  const longsword = has('longsword') ? cfg('longsword') : null;
+  const focus = has('focus') ? cfg('focus') : null;
+  const alphaDog = has('alphaDog') ? cfg('alphaDog') : null;
+  const packLeader = has('packLeader') ? cfg('packLeader') : null;
+
+  player.maxHp = def.hp * boostMul('hp') * (1 + per.hp * a.amuletVitality);
+  player.speedTilesPerSec = def.speedTilesPerSec * boostMul('speed') * (1 + per.speed * a.amuletSpeed);
+  player.shootDamage = shoot.damage * boostMul('shootDmg') * (1 + per.shoot * a.amuletMarksman);
   player.slashDamage =
-    ACTIONS.slash.damage * boostMultiplier(player.boosts, 'slashDmg') * (1 + per.slash * a.amuletBlade);
+    ACTIONS.slash.damage *
+    boostMul('slashDmg') *
+    (1 + per.slash * a.amuletBlade) *
+    (greatsword ? greatsword.damageMult : 1);
+
+  // Greatsword swings harder but slower; a higher cooldown IS the slower rate.
+  player.slashCooldownMaxTicks = ACTIONS.slash.cooldownTicks / (greatsword ? greatsword.rateMult : 1);
+  player.slashReachTiles = ACTIONS.slash.reachTiles + (longsword ? longsword.reachBonusTiles : 0);
+
   player.shootCooldownMaxTicks = shoot.cooldownTicks;
-  player.shootProjectileSpeed = shoot.projectileSpeedTilesPerSec;
+  player.shootProjectileSpeed = shoot.projectileSpeedTilesPerSec * (focus ? focus.speedMult : 1);
+  // NOTE: Shoot range is unlimited (rangeTiles === null) since the projectile
+  // pass, so Focus's range bonus has nothing to extend and is a no-op. Kept
+  // wired for the day a finite range comes back. Flagged in the README.
+  player.shootRangeTiles =
+    shoot.rangeTiles === null ? null : shoot.rangeTiles + (focus ? focus.rangeBonusTiles : 0);
+
+  // Summoner's dog, scaled by its owner's passives.
+  const dog = def.dog;
+  if (dog) {
+    player.dogMaxHp = dog.hp * (alphaDog ? alphaDog.hpMult : 1);
+    player.dogBiteDamage = dog.damage * (alphaDog ? alphaDog.biteMult : 1);
+    player.dogRespawnTicks = dog.respawnCooldownTicks * (packLeader ? packLeader.respawnMult : 1);
+  }
 
   // Ward shortens the Shield cooldown but never past the floor. The floor is a
   // limit on the STAT, not on how many Wards a player may hold.
@@ -103,6 +139,10 @@ function createPlayer(index, characterId, rawBoosts) {
     // Match-level: amulets survive rounds and eliminations, and only reset on a
     // brand-new match (i.e. a fresh createInitialState).
     amulets: createEmptyAmulets(),
+    // Match-level draft results: stat points and owned abilities both
+    // accumulate across rounds and only reset on a brand-new match.
+    statPicks: { hp: 0, speed: 0, shootDmg: 0, slashDmg: 0 },
+    abilities: { passives: [], slots: [null, null] },
     x: spawn.x,
     y: spawn.y,
     radiusTiles: PLAYER_RADIUS_TILES,
@@ -125,6 +165,16 @@ function createPlayer(index, characterId, rawBoosts) {
     item: null, // null | 'grenade' | 'mine' — the single usable-item slot
     itemHeldLastTick: false, // for edge-triggering the Item button
     effects: { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0 },
+    // Skills (per-round). Index 0/1 match abilities.slots.
+    skillCooldowns: [0, 0],
+    skillsHeldLastTick: [false, false],
+    chargingSkill: null, // { slot, startTick } while holding Charged Shot
+    dash: null, // { endTick, vx, vy, damage, hitIds, invulnerable } during Charge/Roll
+    poisonUntilTick: 0,
+    poisonDps: 0,
+    poisonSourceId: null,
+    abilityUses: {},
+    damageByAbility: {},
     roundsWon: 0,
     // Per-round stats (reset by systems/round.js at the start of each round).
     damageDealt: 0,
@@ -178,6 +228,11 @@ export function createInitialState(seed, characterIds, boostAllocations) {
     // systems/explosives.js). All cleared at round end.
     pickups: [],
     nextPickupId: 1,
+    vipers: [], // Summoner ability summons — damageable like dogs
+    nextViperId: 1,
+    traps: [],
+    nextTrapId: 1,
+    draft: null, // set while roundState === 'draft', see systems/draft.js
     explosives: [], // live grenades and armed mines
     nextExplosiveId: 1,
     nextExplosionId: 1,
