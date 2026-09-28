@@ -66,10 +66,10 @@ export class DeviceManager {
    * `keys`: { w,a,s,d,q,e,r } booleans for the keyboard.
    * `aimWorld`: { x, y } in TILES — the crosshair in world space, already
    *   converted by render/coords.js screenToWorld(). Never raw canvas pixels.
-   * `mouseDown`: boolean.
+   * `mouseDown` / `rightMouseDown`: booleans (left = Shoot, right = Skill 1).
    * `playersWorld`: array of 3 { x, y } — current sim positions, for mouse-relative aim.
    */
-  buildFrames(gamepadList, keys, aimWorld, mouseDown, playersWorld) {
+  buildFrames(gamepadList, keys, aimWorld, mouseDown, playersWorld, rightMouseDown = false) {
     const frames = [createEmptyFrame(), createEmptyFrame(), createEmptyFrame()];
 
     if (this.debugMode) {
@@ -77,7 +77,8 @@ export class DeviceManager {
         keys,
         aimWorld,
         playersWorld[this.debugPlayerIndex],
-        mouseDown
+        mouseDown,
+        rightMouseDown
       );
       return frames;
     }
@@ -95,7 +96,7 @@ export class DeviceManager {
         this.disconnectedSlots.delete(i);
         frames[i] = readGamepadFrame(pad);
       } else if (device.kind === 'keyboardMouse') {
-        frames[i] = readKeyboardMouseFrame(keys, aimWorld, playersWorld[i], mouseDown);
+        frames[i] = readKeyboardMouseFrame(keys, aimWorld, playersWorld[i], mouseDown, rightMouseDown);
       }
     }
 

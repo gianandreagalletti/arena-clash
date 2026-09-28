@@ -8,6 +8,7 @@ import { createArenaRenderer } from '../arenaRenderer.js';
 import { createPlayerRenderer } from '../players/playerRenderer.js';
 import { createDogRenderer } from '../dogRenderer.js';
 import { createItemRenderer } from '../itemRenderer.js';
+import { createDraftOverlay } from '../draftOverlay.js';
 import { createFxRenderer } from '../fx/fxRenderer.js';
 import { createHud, updateHud, updateDisconnectBanner } from '../hud.js';
 import { createHitboxOverlay } from '../debug/hitboxOverlay.js';
@@ -38,6 +39,7 @@ export default class GameScene extends Phaser.Scene {
     this.playerRenderer = createPlayerRenderer(this);
     this.dogRenderer = createDogRenderer(this);
     this.itemRenderer = createItemRenderer(this);
+    this.draftOverlay = createDraftOverlay(this);
     this.fxRenderer = createFxRenderer(this);
     this.frameEvents = { meleeSwings: [], novaBlasts: [], explosions: [] };
     this.hud = createHud(this);
@@ -52,13 +54,19 @@ export default class GameScene extends Phaser.Scene {
       e: Phaser.Input.Keyboard.KeyCodes.E,
       r: Phaser.Input.Keyboard.KeyCodes.R,
       f: Phaser.Input.Keyboard.KeyCodes.F,
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
     });
     this.mouseDown = false;
+    this.rightMouseDown = false;
+    // Right click is Skill 1, so the browser menu has to stay out of the way.
+    this.input.mouse.disableContextMenu();
     this.input.on('pointerdown', (p) => {
       if (p.leftButtonDown()) this.mouseDown = true;
+      if (p.rightButtonDown()) this.rightMouseDown = true;
     });
-    this.input.on('pointerup', () => {
-      this.mouseDown = false;
+    this.input.on('pointerup', (p) => {
+      if (p.leftButtonReleased()) this.mouseDown = false;
+      if (p.rightButtonReleased()) this.rightMouseDown = false;
     });
 
     // Crosshair for the keyboard/mouse-controlled player, in that player's color.
@@ -135,6 +143,7 @@ export default class GameScene extends Phaser.Scene {
     this.fxRenderer.update(this.state, this.frameEvents);
     updateHud(this.hud, this.state);
     updateDisconnectBanner(this.hud, this.deviceManager.disconnectedSlots);
+    this.draftOverlay.update(this.state, this.deviceManager);
     this.hitboxOverlay.update(this.state, this._aimDebugInfo());
     this._updateCrosshair();
   }
@@ -150,9 +159,27 @@ export default class GameScene extends Phaser.Scene {
       e: this.keys.e.isDown,
       r: this.keys.r.isDown,
       f: this.keys.f.isDown,
+      space: this.keys.space.isDown,
     };
     const gamepadList = this.input.gamepad?.gamepads || [];
-    const frames = this.deviceManager.buildFrames(gamepadList, keys, this._aimWorld(), this.mouseDown, playersWorld);
+    const frames = this.deviceManager.buildFrames(
+      gamepadList,
+      keys,
+      this._aimWorld(),
+      this.mouseDown,
+      playersWorld,
+      this.rightMouseDown
+    );
+
+    // A confirmed draft choice rides in on the active player's InputFrame like
+    // any other input, so a recorded match still reproduces the draft.
+    if (this.state.roundState === 'draft' && this.state.draft) {
+      const pick = this.draftOverlay.consumePick();
+      if (pick) {
+        const activeId = this.state.draft.order[this.state.draft.turn];
+        frames[activeId] = { ...frames[activeId], draftPick: pick };
+      }
+    }
 
     const prevLogCount = this.state.logs.length;
     this.state = step(this.state, frames);

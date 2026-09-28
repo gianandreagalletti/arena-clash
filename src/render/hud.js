@@ -8,9 +8,10 @@ import { CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX } from './coords.js';
 import { PALETTE, paletteKeyForCharacterColor } from './art/palette.js';
 import { PIXEL_FONT_FAMILY } from './art/font.js';
 import { drawPanel, pixelTextStyle } from './ui/panel.js';
+import { slotLabel } from './help/abilityText.js';
 
 const PANEL_W = 168;
-const PANEL_H = 76; // room for the item slot, timed effects and the amulet row
+const PANEL_H = 90; // item slot, timed effects, skill slots and the amulet row
 const PANEL_MARGIN = 8;
 const HP_SEGMENTS = 10;
 const SLOT_SIZE = 12;
@@ -44,12 +45,16 @@ function makePlayerPanel(scene, index) {
     .text(x + 6, y + 38, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted))
     .setScrollFactor(0)
     .setDepth(10001);
+  const skillText = scene.add
+    .text(x + 6, y + 62, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiText))
+    .setScrollFactor(0)
+    .setDepth(10001);
   const amuletText = scene.add
-    .text(x + 6, y + 64, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.itemGold))
+    .text(x + 6, y + 78, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.itemGold))
     .setScrollFactor(0)
     .setDepth(10001);
 
-  return { x, y, graphics, nameText, hpText, shieldText, amuletText };
+  return { x, y, graphics, nameText, hpText, shieldText, skillText, amuletText };
 }
 
 function drawHpBar(graphics, x, y, w, fraction) {
@@ -223,7 +228,16 @@ export function updateHud(hud, state) {
     // Pickups row: held item, active timed effects, amulets owned.
     drawItemSlot(panel.graphics, panel.x + 6, panel.y + 48, player.item);
     drawTimedEffects(panel.graphics, panel.x + 24, panel.y + 50, state, player);
-    drawAmuletRow(panel.graphics, panel.amuletText, panel.x + 6, panel.y + 64, player);
+    // Phase 1: skills are text only — name plus seconds left on cooldown.
+    const skills = player.abilities.slots
+      .map((id, slot) => `${slot + 1}:${slotLabel(player.characterId, id, player.skillCooldowns[slot])}`)
+      .join('  ');
+    panel.skillText.setText(skills);
+    panel.skillText.setColor(
+      player.abilities.slots.some((id) => id) ? PALETTE.uiText : PALETTE.uiTextMuted
+    );
+
+    drawAmuletRow(panel.graphics, panel.amuletText, panel.x + 6, panel.y + 78, player);
   });
 
   hud.bannerBg.clear();
