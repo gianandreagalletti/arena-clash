@@ -59,6 +59,30 @@ export const PALETTE = {
     amuletHunter: '#FFE08A',
   },
 
+  // --- Abilities ---
+  // One readable accent per ability icon. Grouped loosely by what the ability
+  // does (movement cyan, damage orange/red, summons green, defence blue) so a
+  // glance at the HUD reads as a category even before the shape does.
+  abilityColors: {
+    viper: '#6BD66B',
+    thornTrap: '#3FA34D',
+    alphaDog: '#8FD0F4',
+    boneMeal: '#FF7A8A',
+    packLeader: '#F2C14E',
+    longsword: '#C9D2CC',
+    greatsword: '#FF9D47',
+    charge: '#4EE0C0',
+    whirlwind: '#FF5A4E',
+    bloodthirst: '#D1382C',
+    vanish: '#9B7BD4',
+    roll: '#4EE0C0',
+    chargedShot: '#FFE08A',
+    piercing: '#4EA8FF',
+    focus: '#6BD66B',
+  },
+  poison: '#7CE07C',
+  poisonDark: '#2E6B2E',
+
   uiPanelBg: '#000000',
   uiPanelBorder: '#26382C',
   uiText: '#E7E6D6',

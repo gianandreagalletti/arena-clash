@@ -7,6 +7,7 @@ import { GAMEPAD_BUTTON_A } from '../../input/gamepad.js';
 import { createArenaRenderer } from '../arenaRenderer.js';
 import { createPlayerRenderer } from '../players/playerRenderer.js';
 import { createDogRenderer } from '../dogRenderer.js';
+import { createSummonRenderer } from '../summonRenderer.js';
 import { createItemRenderer } from '../itemRenderer.js';
 import { createDraftOverlay } from '../draftOverlay.js';
 import { createFxRenderer } from '../fx/fxRenderer.js';
@@ -38,6 +39,7 @@ export default class GameScene extends Phaser.Scene {
     this.arena = createArenaRenderer(this);
     this.playerRenderer = createPlayerRenderer(this);
     this.dogRenderer = createDogRenderer(this);
+    this.summonRenderer = createSummonRenderer(this);
     this.itemRenderer = createItemRenderer(this);
     this.draftOverlay = createDraftOverlay(this);
     this.fxRenderer = createFxRenderer(this);
@@ -139,6 +141,7 @@ export default class GameScene extends Phaser.Scene {
     this.arena.update(this.state.tick);
     this.playerRenderer.update(this.state);
     this.dogRenderer.update(this.state);
+    this.summonRenderer.update(this.state);
     this.itemRenderer.update(this.state);
     this.fxRenderer.update(this.state, this.frameEvents);
     updateHud(this.hud, this.state);

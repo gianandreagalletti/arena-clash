@@ -24,6 +24,9 @@
 //   proj-{red|blue|green}
 //   slash-{red|blue|green}-{dir}-{0|1|2}   dir one of the 8 compass points
 //   shield-{red|blue|green}-{0|1}
+//   ability-{id}                           HUD slot icons, one per ability
+//   viper-{red|blue|green}-{0|1}           owner-coloured, 2-frame slither
+//   trap-{red|blue|green}-{idle|armed}
 //   pickup-{medkit|overcharge|adrenaline|shieldBattery|grenade|mine|cloak}
 //   amulet-{amuletSpeed|...|amuletHunter}-{0|1}   2-frame sparkle
 //   mine-unarmed / mine-armed              a deployed mine
@@ -485,8 +488,86 @@ function generateItemTextures(scene) {
   }
 }
 
+// --- Abilities: HUD icons, summons, and the 360 whirlwind smear ---
+
+// Same rect-glyph grammar as the pickups: [x, y, w, h] in authored pixels, all
+// drawn in that ability's accent colour over a shared outline silhouette.
+const ABILITY_GLYPHS = {
+  viper: [[3, 9, 10, 3], [11, 5, 3, 5], [12, 3, 3, 3]], // coiled body, raised head
+  thornTrap: [[3, 7, 10, 4], [4, 4, 2, 3], [8, 4, 2, 3], [12, 4, 2, 3]], // jaws
+  alphaDog: [[4, 7, 8, 5], [3, 4, 3, 3], [11, 4, 3, 3], [6, 12, 2, 2], [9, 12, 2, 2]],
+  boneMeal: [[7, 3, 2, 10], [4, 4, 3, 2], [10, 4, 3, 2], [4, 10, 3, 2], [10, 10, 3, 2]], // bone
+  packLeader: [[3, 6, 4, 5], [9, 6, 4, 5], [6, 9, 4, 4]], // a pack
+  longsword: [[7, 2, 2, 10], [4, 11, 8, 2], [7, 13, 2, 2]],
+  greatsword: [[6, 2, 4, 10], [3, 11, 10, 2], [7, 13, 2, 2]],
+  charge: [[2, 7, 8, 3], [9, 4, 3, 3], [9, 10, 3, 3], [11, 6, 3, 4]], // arrow
+  whirlwind: [[3, 3, 10, 2], [11, 5, 2, 6], [3, 11, 10, 2], [3, 5, 2, 6]], // ring
+  bloodthirst: [[6, 3, 4, 4], [4, 7, 8, 4], [6, 11, 4, 3]], // droplet
+  vanish: [[4, 4, 8, 3], [3, 7, 10, 5], [6, 8, 2, 2], [9, 8, 2, 2]], // hood with eyes
+  roll: [[5, 5, 6, 6], [3, 8, 2, 2], [11, 8, 2, 2], [8, 3, 2, 2]],
+  chargedShot: [[3, 7, 7, 2], [10, 5, 4, 6], [5, 4, 2, 2], [5, 11, 2, 2]],
+  piercing: [[2, 7, 12, 2], [10, 5, 2, 6], [6, 6, 2, 4]],
+  focus: [[6, 6, 4, 4], [2, 7, 3, 2], [11, 7, 3, 2], [7, 2, 2, 3], [7, 11, 2, 3]], // crosshair
+};
+
+function generateAbilityIcons(scene) {
+  const size = PLAYER_FRAME_SIZE * PX;
+  for (const [id, rects] of Object.entries(ABILITY_GLYPHS)) {
+    const color = PALETTE.abilityColors[id];
+    const canvas = makeCanvas(size, size);
+    paintGlyph(canvas.getContext('2d'), rects.map((r) => [...r, color]));
+    scene.textures.addCanvas(`ability-${id}`, canvas);
+  }
+}
+
+/** The viper: a small snake, 2 frames so it slithers. Owner-coloured. */
+function generateViperTextures(scene) {
+  const size = PLAYER_FRAME_SIZE * PX;
+  const frames = [
+    [[3, 9, 4, 2], [6, 7, 4, 2], [9, 9, 4, 2], [12, 6, 3, 3]],
+    [[3, 7, 4, 2], [6, 9, 4, 2], [9, 7, 4, 2], [12, 6, 3, 3]],
+  ];
+
+  for (const key of ['red', 'blue', 'green']) {
+    frames.forEach((rects, frame) => {
+      const canvas = makeCanvas(size, size);
+      const ctx = canvas.getContext('2d');
+      const body = PALETTE[key].body;
+      paintGlyph(ctx, rects.map((r) => [...r, body]));
+      // Eye, so the head end is obvious at a glance.
+      ctx.fillStyle = PALETTE.poison;
+      ctx.fillRect(13 * PX, 7 * PX, PX, PX);
+      scene.textures.addCanvas(`viper-${key}-${frame}`, canvas);
+    });
+  }
+}
+
+/** The thorn trap: a ring of spikes, dim before it arms. */
+function generateTrapTextures(scene) {
+  const size = PLAYER_FRAME_SIZE * PX;
+  const spikes = [
+    [7, 2, 2, 3], [7, 11, 2, 3], [2, 7, 3, 2], [11, 7, 3, 2],
+    [4, 4, 2, 2], [10, 4, 2, 2], [4, 10, 2, 2], [10, 10, 2, 2],
+  ];
+
+  for (const key of ['red', 'blue', 'green']) {
+    for (const [suffix, armed] of [['idle', false], ['armed', true]]) {
+      const canvas = makeCanvas(size, size);
+      const ctx = canvas.getContext('2d');
+      const color = armed ? PALETTE[key].accent : PALETTE.uiTextMuted;
+      paintGlyph(ctx, spikes.map((r) => [...r, color]));
+      ctx.fillStyle = armed ? PALETTE[key].shade : PALETTE.outline;
+      ctx.fillRect(6 * PX, 6 * PX, 4 * PX, 4 * PX);
+      scene.textures.addCanvas(`trap-${key}-${suffix}`, canvas);
+    }
+  }
+}
+
 export function generateAllTextures(scene) {
   generateItemTextures(scene);
+  generateAbilityIcons(scene);
+  generateViperTextures(scene);
+  generateTrapTextures(scene);
   generateCharacterAtlases(scene, PLAYER_FRAMES, 'player', PLAYER_PALETTE_KEYS);
   // Dogs are only ever owner-colored — no ghost variant (they don't spectate).
   generateCharacterAtlases(scene, DOG_FRAMES, 'dog', ['red', 'blue', 'green']);

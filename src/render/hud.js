@@ -3,7 +3,14 @@
 // only; all Text/Graphics objects are created once and updated in place.
 
 import Phaser from 'phaser';
-import { TICK_RATE, ROUNDS_TO_WIN_MATCH, CHARACTERS, PICKUPS, AMULET_IDS } from '../sim/config/balance.js';
+import {
+  TICK_RATE,
+  ROUNDS_TO_WIN_MATCH,
+  CHARACTERS,
+  PICKUPS,
+  AMULET_IDS,
+  abilityConfig,
+} from '../sim/config/balance.js';
 import { CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX } from './coords.js';
 import { PALETTE, paletteKeyForCharacterColor } from './art/palette.js';
 import { PIXEL_FONT_FAMILY } from './art/font.js';
@@ -15,6 +22,7 @@ const PANEL_H = 90; // item slot, timed effects, skill slots and the amulet row
 const PANEL_MARGIN = 8;
 const HP_SEGMENTS = 10;
 const SLOT_SIZE = 12;
+const SKILL_ICON_SIZE = 14;
 
 /** The timed effects a panel can show, with the field holding their expiry tick. */
 const TIMED_EFFECTS = [
@@ -45,8 +53,27 @@ function makePlayerPanel(scene, index) {
     .text(x + 6, y + 38, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiTextMuted))
     .setScrollFactor(0)
     .setDepth(10001);
+  // Two ability slots: an icon box each, with the name + cooldown text to the
+  // right of them. The icons are created once and only re-textured.
+  const skillIcons = [0, 1].map((slot) =>
+    scene.add
+      .image(x + 8 + slot * (SKILL_ICON_SIZE + 4), y + 60, 'ability-roll')
+      .setOrigin(0, 0)
+      .setDisplaySize(SKILL_ICON_SIZE, SKILL_ICON_SIZE)
+      .setScrollFactor(0)
+      .setDepth(10001)
+      .setVisible(false)
+  );
+  const cooldownTexts = [0, 1].map(() =>
+    scene.add
+      .text(0, 0, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiText))
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(10002)
+      .setVisible(false)
+  );
   const skillText = scene.add
-    .text(x + 6, y + 62, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiText))
+    .text(x + 8 + 2 * (SKILL_ICON_SIZE + 4) + 4, y + 62, '', pixelTextStyle(PIXEL_FONT_FAMILY, 8, PALETTE.uiText))
     .setScrollFactor(0)
     .setDepth(10001);
   const amuletText = scene.add
@@ -54,7 +81,7 @@ function makePlayerPanel(scene, index) {
     .setScrollFactor(0)
     .setDepth(10001);
 
-  return { x, y, graphics, nameText, hpText, shieldText, skillText, amuletText };
+  return { x, y, graphics, nameText, hpText, shieldText, skillIcons, cooldownTexts, skillText, amuletText };
 }
 
 function drawHpBar(graphics, x, y, w, fraction) {
@@ -109,6 +136,73 @@ function drawItemSlot(graphics, x, y, item) {
   }
   graphics.lineStyle(1, colorInt(item ? PALETTE.itemGold : PALETTE.uiPanelBorder), 1);
   graphics.strokeRect(x, y, SLOT_SIZE, SLOT_SIZE);
+}
+
+/**
+ * The two ability slots: icon, frame, and a cooldown shade that drains top-down.
+ *
+ * The slot NUMBER is the input binding (1/2 on the keyboard, the two shoulder
+ * buttons on a pad), so an empty slot still draws its frame — the position has
+ * to stay fixed or the binding stops matching what you see.
+ */
+function drawSkillSlots(panel, state, player) {
+  const names = [];
+  let cooldownLabels = 0;
+
+  player.abilities.slots.forEach((abilityId, slot) => {
+    const x = panel.x + 8 + slot * (SKILL_ICON_SIZE + 4);
+    const y = panel.y + 60;
+    const icon = panel.skillIcons[slot];
+
+    panel.graphics.fillStyle(0x000000, 0.6);
+    panel.graphics.fillRect(x, y, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
+
+    if (!abilityId) {
+      icon.setVisible(false);
+      panel.cooldownTexts[slot].setVisible(false);
+      panel.graphics.lineStyle(1, colorInt(PALETTE.uiPanelBorder), 1);
+      panel.graphics.strokeRect(x, y, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
+      return;
+    }
+
+    icon.setTexture(`ability-${abilityId}`);
+    icon.setDisplaySize(SKILL_ICON_SIZE, SKILL_ICON_SIZE);
+    icon.setVisible(true);
+
+    const config = abilityConfig(player.characterId, abilityId);
+    const cooldownTicks = player.skillCooldowns[slot];
+    const maxTicks = config && config.cooldownTicks ? config.cooldownTicks : 1;
+    const cooling = cooldownTicks > 0;
+
+    if (cooling) {
+      // Shade from the top down by how much cooldown is LEFT, so the icon
+      // uncovers as it comes back. Rounded to whole pixels.
+      const shadeH = Math.ceil(Math.min(1, cooldownTicks / maxTicks) * SKILL_ICON_SIZE);
+      panel.graphics.fillStyle(0x000000, 0.72);
+      panel.graphics.fillRect(x, y, SKILL_ICON_SIZE, shadeH);
+      icon.setAlpha(0.55);
+      // Seconds left sit ON the icon rather than in the name row: two names
+      // plus two "12s" suffixes do not fit the panel width at 8px.
+      panel.cooldownTexts[slot]
+        .setPosition(x + SKILL_ICON_SIZE / 2, y + SKILL_ICON_SIZE / 2)
+        .setText(String(Math.ceil(cooldownTicks / TICK_RATE)))
+        .setVisible(true);
+      cooldownLabels += 1;
+    } else {
+      icon.setAlpha(1);
+      panel.cooldownTexts[slot].setVisible(false);
+    }
+
+    // Ready slots get a torch-orange frame; cooling ones stay muted.
+    panel.graphics.lineStyle(1, colorInt(cooling ? PALETTE.uiPanelBorder : PALETTE.torchCore), 1);
+    panel.graphics.strokeRect(x, y, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
+
+    names.push(slotLabel(player.characterId, abilityId, 0));
+  });
+
+  panel.skillText.setText(names.join('  '));
+  panel.skillText.setColor(names.length ? PALETTE.uiText : PALETTE.uiTextMuted);
+  if (cooldownLabels === 0) panel.cooldownTexts.forEach((t) => t.setVisible(false));
 }
 
 /** Active timed effects, each as a small block with a bar that drains as it expires. */
@@ -228,14 +322,7 @@ export function updateHud(hud, state) {
     // Pickups row: held item, active timed effects, amulets owned.
     drawItemSlot(panel.graphics, panel.x + 6, panel.y + 48, player.item);
     drawTimedEffects(panel.graphics, panel.x + 24, panel.y + 50, state, player);
-    // Phase 1: skills are text only — name plus seconds left on cooldown.
-    const skills = player.abilities.slots
-      .map((id, slot) => `${slot + 1}:${slotLabel(player.characterId, id, player.skillCooldowns[slot])}`)
-      .join('  ');
-    panel.skillText.setText(skills);
-    panel.skillText.setColor(
-      player.abilities.slots.some((id) => id) ? PALETTE.uiText : PALETTE.uiTextMuted
-    );
+    drawSkillSlots(panel, state, player);
 
     drawAmuletRow(panel.graphics, panel.amuletText, panel.x + 6, panel.y + 78, player);
   });

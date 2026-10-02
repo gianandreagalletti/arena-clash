@@ -49,9 +49,13 @@ function drawPixelRing(graphics, cx, cy, radiusPx, blockSize, color, alpha) {
 
 // --- Projectiles (pooled) ---
 
+const PIERCE_SPARK_TICKS = 8; // same ballpark as the blast/explosion rings, so it reads at 60fps
+const PIERCE_SPARK_COUNT = 5;
+
 function createProjectilePool(scene) {
-  const active = new Map(); // projectileId -> { core, trailA, trailB, prevX, prevY }
+  const active = new Map(); // projectileId -> { core, trailA, trailB, trailC, prevX, prevY, hits }
   const free = [];
+  const sparks = []; // { sprite, startTick, angle, x, y }
 
   function acquire(colorKey) {
     let entry = free.pop();
@@ -60,18 +64,25 @@ function createProjectilePool(scene) {
         core: scene.add.sprite(0, 0, `proj-${colorKey}`),
         trailA: scene.add.sprite(0, 0, `proj-trail-${colorKey}`),
         trailB: scene.add.sprite(0, 0, `proj-trail-${colorKey}`),
+        trailC: scene.add.sprite(0, 0, `proj-trail-${colorKey}`),
       };
       entry.core.setDepth(FX_DEPTH);
       entry.trailA.setDepth(FX_DEPTH - 1);
       entry.trailB.setDepth(FX_DEPTH - 2);
+      entry.trailC.setDepth(FX_DEPTH - 3);
     } else {
       entry.core.setTexture(`proj-${colorKey}`);
       entry.trailA.setTexture(`proj-trail-${colorKey}`);
       entry.trailB.setTexture(`proj-trail-${colorKey}`);
+      entry.trailC.setTexture(`proj-trail-${colorKey}`);
     }
     entry.core.setVisible(true);
     entry.trailA.setVisible(true).setAlpha(0.55);
     entry.trailB.setVisible(true).setAlpha(0.25);
+    // trailC is the piercing tell — switched on below only for a piercing round.
+    entry.trailC.setVisible(false).setAlpha(0.12);
+    entry.colorKey = colorKey;
+    entry.hits = 0;
     return entry;
   }
 
@@ -79,7 +90,17 @@ function createProjectilePool(scene) {
     entry.core.setVisible(false);
     entry.trailA.setVisible(false);
     entry.trailB.setVisible(false);
+    entry.trailC.setVisible(false);
     free.push(entry);
+  }
+
+  /** The pass-through burst: a piercing round punched through somebody and kept going. */
+  function spawnSparks(state, x, y, colorKey) {
+    for (let i = 0; i < PIERCE_SPARK_COUNT; i++) {
+      const sprite = scene.add.sprite(x, y, `particle-${colorKey}`);
+      sprite.setDepth(FX_DEPTH + 1);
+      sparks.push({ sprite, startTick: state.tick, angle: (i / PIERCE_SPARK_COUNT) * Math.PI * 2, x, y });
+    }
   }
 
   return {
@@ -99,9 +120,20 @@ function createProjectilePool(scene) {
           active.set(proj.id, entry);
         }
 
+        // hitIds only ever grows, and a piercing round is still ALIVE after its
+        // first hit — that surviving frame is exactly when the spark belongs.
+        if (proj.hitIds.length > entry.hits) {
+          spawnSparks(state, screenX, screenY, entry.colorKey);
+          entry.hits = proj.hitIds.length;
+        }
+
+        entry.trailC.setPosition(entry.trailB.x, entry.trailB.y);
         entry.trailB.setPosition(entry.prevX, entry.prevY);
         entry.trailA.setPosition((entry.prevX + screenX) / 2, (entry.prevY + screenY) / 2);
         entry.core.setPosition(screenX, screenY);
+        // Piercing rounds carry a longer tail, so you can tell one apart in
+        // flight rather than only after it punches through.
+        entry.trailC.setVisible(!!proj.piercing);
 
         entry.prevX = screenX;
         entry.prevY = screenY;
@@ -113,14 +145,35 @@ function createProjectilePool(scene) {
           active.delete(id);
         }
       }
+
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        const elapsed = state.tick - s.startTick;
+        if (elapsed >= PIERCE_SPARK_TICKS || elapsed < 0) {
+          s.sprite.destroy();
+          sparks.splice(i, 1);
+          continue;
+        }
+        const dist = (elapsed / PIERCE_SPARK_TICKS) * TILE_SIZE_PX * 0.4;
+        s.sprite.setPosition(s.x + Math.cos(s.angle) * dist, s.y + Math.sin(s.angle) * dist);
+        s.sprite.setAlpha(1 - elapsed / PIERCE_SPARK_TICKS);
+      }
     },
   };
 }
 
 // --- Slash smears (8 pre-drawn directions x 3 frames, pooled by attacker slot) ---
+//
+// Whirlwind arrives on the SAME meleeSwings channel, just with arcDegrees 360.
+// A directional wedge would be a lie about what it hit, so a 360 swing is
+// routed to an expanding ring drawn at the swing's true reach instead.
+
+const WHIRLWIND_TICKS = 8;
 
 function createSlashFx(scene) {
   const activeByPlayer = new Map(); // playerId -> { sprite, startTick, colorKey, dir }
+  const whirlwinds = []; // { x, y, radiusPx, startTick, accent }
+  const whirlGraphics = scene.add.graphics().setDepth(FX_DEPTH).setBlendMode(Phaser.BlendModes.ADD);
 
   function spriteFor(playerId) {
     let entry = activeByPlayer.get(playerId);
@@ -136,6 +189,17 @@ function createSlashFx(scene) {
   return {
     update(state, events) {
       for (const swing of events.meleeSwings) {
+        if (swing.arcDegrees >= 360) {
+          const caster = state.players.find((p) => p.id === swing.playerId);
+          whirlwinds.push({
+            x: worldToScreenX(swing.x),
+            y: worldToScreenY(swing.y),
+            radiusPx: swing.reachTiles * TILE_SIZE_PX,
+            startTick: state.tick,
+            accent: colorInt(caster ? CHARACTERS[caster.characterId].color : PALETTE.uiText),
+          });
+          continue;
+        }
         const entry = spriteFor(swing.playerId);
         entry.startTick = state.tick;
         entry.colorKey = ownerColorKey(state, swing.playerId);
@@ -156,6 +220,25 @@ function createSlashFx(scene) {
         entry.sprite.setTexture(`slash-${entry.colorKey}-${entry.dir}-${frame}`);
         entry.sprite.setOrigin(0.5, 0.5);
         entry.sprite.setVisible(true);
+      }
+
+      whirlGraphics.clear();
+      for (let i = whirlwinds.length - 1; i >= 0; i--) {
+        const w = whirlwinds[i];
+        const elapsed = state.tick - w.startTick;
+        if (elapsed >= WHIRLWIND_TICKS) {
+          whirlwinds.splice(i, 1);
+          continue;
+        }
+        const t = elapsed / WHIRLWIND_TICKS;
+        const fade = 1 - t;
+        // Two rings sweeping out to the real reach: a white leading edge with
+        // the owner's color behind it, so you can read how far it bit.
+        drawPixelRing(whirlGraphics, w.x, w.y, w.radiusPx * t, 4, 0xffffff, fade * 0.9);
+        drawPixelRing(whirlGraphics, w.x, w.y, w.radiusPx * t - 4, 4, w.accent, fade);
+        // A dashed outline at the true radius for the whole animation, so the
+        // edge is visible from the first frame, not only when the wave gets there.
+        drawPixelRing(whirlGraphics, w.x, w.y, w.radiusPx, 3, w.accent, fade * 0.45);
       }
     },
   };

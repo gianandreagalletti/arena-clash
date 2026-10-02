@@ -6,7 +6,7 @@
 // per-player-id maps HERE, never in sim state (architecture rule).
 
 import Phaser from 'phaser';
-import { TILE_SIZE_PX, PLAYER_RADIUS_TILES, CHARACTERS } from '../../sim/config/balance.js';
+import { TILE_SIZE_PX, PLAYER_RADIUS_TILES, CHARACTERS, ABILITIES } from '../../sim/config/balance.js';
 import { worldToScreenX, worldToScreenY } from '../coords.js';
 import { PALETTE, paletteKeyForCharacterColor } from '../art/palette.js';
 import { PIXEL_FONT_FAMILY } from '../art/font.js';
@@ -19,6 +19,7 @@ const INVULN_BLINK_TICKS = 4;
 const MOVE_EPSILON_TILES = 0.002;
 const REACH_TILES_FOR_RETICLE = 0.8;
 const CLOAK_ALPHA = 0.25;
+const CHARGED_SHOT_MAX_TICKS = ABILITIES.sniper.chargedShot.maxChargeTicks;
 
 // Sprite anchor: the sim position (player.x/y) is the *center of the collision
 // circle*, but a literal geometric-center anchor on a chibi sprite (huge head,
@@ -48,6 +49,9 @@ function makePlayerVisual(scene, playerId) {
   const body = scene.add.sprite(0, 0, 'player-red', 'idle-down-0');
   body.setOrigin(0.5, BODY_ORIGIN_Y);
 
+  const chargeGlow = scene.add.circle(0, 0, 6, 0xffffff, 0.3).setVisible(false);
+  const poison = scene.add.graphics().setVisible(false);
+
   const trailA = scene.add.rectangle(0, 0, 6, 6, 0xffffff, 0.45).setVisible(false);
   const trailB = scene.add.rectangle(0, 0, 4, 4, 0xffffff, 0.22).setVisible(false);
 
@@ -68,7 +72,7 @@ function makePlayerVisual(scene, playerId) {
     .setOrigin(0.5, 1)
     .setDepth(6000);
 
-  return { shadow, body, shield, reticle, tag, trailA, trailB };
+  return { shadow, body, shield, reticle, tag, trailA, trailB, chargeGlow, poison };
 }
 
 export function createPlayerRenderer(scene) {
@@ -150,8 +154,44 @@ export function createPlayerRenderer(scene) {
           visual.body.clearTint();
         }
 
-        // Adrenaline leaves a short 2-segment trail behind the player.
-        const adrenalized = state.tick < player.effects.adrenalineUntilTick;
+        // A Roll is invulnerable, so it blinks to say so. Charge does not.
+        if (player.dash && player.dash.invulnerable) {
+          visual.body.setAlpha(state.tick % 4 < 2 ? 1 : 0.45);
+        }
+
+        // Charged Shot: a growing glow while the shot is held.
+        const charge = player.chargingSkill;
+        if (charge) {
+          const heldTicks = state.tick - charge.startTick;
+          const fraction = Math.max(0, Math.min(1, heldTicks / CHARGED_SHOT_MAX_TICKS));
+          visual.chargeGlow.setPosition(screenX, screenY - RADIUS_PX * 0.5);
+          // Discrete steps, never a fractional scale.
+          visual.chargeGlow.setRadius(6 + Math.floor(fraction * 3) * 4);
+          visual.chargeGlow.setFillStyle(colorInt(def.color), 0.25 + fraction * 0.3);
+          visual.chargeGlow.setDepth(player.y - 0.05);
+          visual.chargeGlow.setVisible(true);
+        } else {
+          visual.chargeGlow.setVisible(false);
+        }
+
+        // Poison: small green bubbles drifting up off the sprite.
+        const poisoned = state.tick < player.poisonUntilTick;
+        visual.poison.setVisible(poisoned);
+        if (poisoned) {
+          visual.poison.clear();
+          visual.poison.setDepth(6000);
+          visual.poison.fillStyle(colorInt(PALETTE.poison), 0.9);
+          for (let i = 0; i < 3; i++) {
+            const phase = (state.tick / 8 + i * 0.6) % 1;
+            const bx = screenX - 8 + i * 8;
+            const by = screenY - RADIUS_PX * 1.6 - phase * 12;
+            visual.poison.fillRect(bx, by, 3, 3);
+          }
+        }
+
+        // A dash leaves a short afterimage trail; so does Adrenaline.
+        const dashing = player.dash !== null;
+        const adrenalized = dashing || state.tick < player.effects.adrenalineUntilTick;
         visual.trailA.setVisible(adrenalized);
         visual.trailB.setVisible(adrenalized);
         if (adrenalized) {
@@ -209,6 +249,8 @@ function renderGhost(visual, screenX, screenY, tileY, paletteKey) {
   visual.shadow.setVisible(false);
   visual.trailA.setVisible(false);
   visual.trailB.setVisible(false);
+  visual.chargeGlow.setVisible(false);
+  visual.poison.setVisible(false);
   visual.tag.setVisible(false);
   visual.reticle.setVisible(false);
   visual.shield.setVisible(false);
