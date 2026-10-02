@@ -58,6 +58,30 @@ await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(2500); // BootScene: texture generation + font
 await page.click('canvas').catch(() => {});
 
+// The Help screen opens from the join screen, before anything else happens, so
+// it is handled here rather than after the game has started.
+if (shot === 'help') {
+  await holdKey(page, 'h');
+  // Tabs wrap, so two LEFTs from CONTROLS lands on ABILITIES (the second-to-last).
+  await holdKey(page, 'ArrowLeft');
+  await holdKey(page, 'ArrowLeft');
+  const tab = await page.evaluate(() => {
+    const help = window.__ARENA_GAME__.scene.getScene('HelpScene');
+    return help && help.scene.isActive() ? String(help.tabIndex) : 'help not open';
+  });
+  await page.screenshot({ path: `${outDir}/help-abilities.png` });
+  console.log(`-> ${outDir}/help-abilities.png (tab ${tab})`);
+
+  // Scrolled down, so the berserker and sniper pools are in frame too.
+  for (let i = 0; i < 6; i++) await holdKey(page, 'ArrowDown', 60);
+  await page.screenshot({ path: `${outDir}/help-abilities-scrolled.png` });
+  console.log(`-> ${outDir}/help-abilities-scrolled.png`);
+
+  console.log(errors.length ? `CONSOLE ERRORS:\n${errors.join('\n')}` : 'no console errors');
+  await browser.close();
+  process.exit(0);
+}
+
 // F1 = debug solo mode (skips the join screen), then ready up on the boost screen.
 await holdKey(page, 'F1');
 await holdKey(page, 'Enter');
@@ -242,6 +266,69 @@ if (shot === 'draft') {
   await page.waitForTimeout(70); // ~4 ticks into the 8-tick ring
   await page.screenshot({ path: `${outDir}/phase2-whirlwind.png` });
   console.log(`-> ${outDir}/phase2-whirlwind.png`);
+} else if (shot === 'f3') {
+  // Same staged arena as `phase2`, with the debug overlay on: the point is to
+  // check the FX against the numbers the sim actually uses.
+  await holdKey(page, 'F3');
+  await page.evaluate(() => {
+    const s = window.__ARENA_GAME__.scene.getScene('GameScene').state;
+    s.roundState = 'playing';
+    s.roundStartTick = s.tick;
+    for (const p of s.players) p.invulnUntilTick = s.tick;
+
+    const by = (id) => s.players.find((p) => p.characterId === id);
+    const summoner = by('summoner');
+    const berserker = by('berserker');
+    const sniper = by('sniper');
+
+    berserker.abilities.slots = ['charge', 'whirlwind'];
+    berserker.x = 12;
+    berserker.y = 8;
+
+    sniper.abilities.slots = ['roll', 'chargedShot'];
+    sniper.x = 19;
+    sniper.y = 11;
+
+    summoner.x = 4;
+    summoner.y = 4;
+
+    s.vipers.push({
+      id: s.nextViperId++, kind: 'viper', ownerId: summoner.id,
+      x: 8, y: 6, radiusTiles: 0.3, hp: 25, maxHp: 25, alive: true,
+      biteCooldownTicks: 0, expiresAtTick: s.tick + 600,
+    });
+    s.traps.push({
+      id: s.nextTrapId++, ownerId: summoner.id, x: 6, y: 12, radiusTiles: 0.9,
+      armedAtTick: s.tick - 60, expiresAtTick: s.tick + 600,
+      enterDamage: 5, slowMult: 0.6, insideIds: [],
+    });
+    s.traps.push({
+      id: s.nextTrapId++, ownerId: summoner.id, x: 10, y: 13, radiusTiles: 0.9,
+      armedAtTick: s.tick + 120, expiresAtTick: s.tick + 700,
+      enterDamage: 5, slowMult: 0.6, insideIds: [],
+    });
+  });
+
+  // Dashes end on the next tick with no button held, so both are pinned the
+  // same way the phase2 shot pins a charge — see the comment there.
+  await page.evaluate(() => {
+    const scene = window.__ARENA_GAME__.scene.getScene('GameScene');
+    const orig = scene.hitboxOverlay.update.bind(scene.hitboxOverlay);
+    scene.hitboxOverlay.update = (state, aim) => {
+      const berserker = state.players.find((p) => p.characterId === 'berserker');
+      const sniper = state.players.find((p) => p.characterId === 'sniper');
+      const saved = [berserker.dash, sniper.dash];
+      // Charge: damaging, not invulnerable. Roll: invulnerable, no damage.
+      berserker.dash = { ticksLeft: 10, vx: 16, vy: 0, damage: 20, invulnerable: false, hitIds: [], abilityId: 'charge' };
+      sniper.dash = { ticksLeft: 10, vx: -11, vy: -11, damage: 0, invulnerable: true, hitIds: [], abilityId: 'roll' };
+      orig(state, aim);
+      berserker.dash = saved[0];
+      sniper.dash = saved[1];
+    };
+  });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${outDir}/f3-abilities.png` });
+  console.log(`-> ${outDir}/f3-abilities.png`);
 } else {
   await page.screenshot({ path: `${outDir}/${shot}.png` });
   console.log(`-> ${outDir}/${shot}.png`);

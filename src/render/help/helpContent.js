@@ -10,47 +10,35 @@
 // Adding a pickup later: add one entry to the relevant list below. The scene
 // iterates blindly and knows nothing about specific items.
 
-import { PICKUPS, ACTIONS, CHARACTERS, BOOST_BONUS_PER_POINT, BOOST_POINTS_PER_PLAYER, TICK_RATE } from '../../sim/config/balance.js';
+import {
+  PICKUPS,
+  ACTIONS,
+  CHARACTERS,
+  BOOST_BONUS_PER_POINT,
+  BOOST_POINTS_PER_PLAYER,
+  DRAFT,
+} from '../../sim/config/balance.js';
 import { BINDINGS, DEBUG_BINDINGS, shortLabelFor } from '../../input/bindings.js';
+import {
+  formatSeconds,
+  formatMultiplierBonus,
+  formatFraction,
+  formatTiles,
+  formatNumber,
+  formatRate,
+} from './format.js';
+import { buildAbilityGroups } from './abilityText.js';
 
-// --- Formatters (exported for the tests) ---
-
-/** 120 -> "2 s", 30 -> "0.5 s" */
-export function formatSeconds(ticks) {
-  const seconds = ticks / TICK_RATE;
-  const rounded = Math.round(seconds * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} s`;
-}
-
-/** 1.3 -> "+30%" (a multiplier expressed as its bonus) */
-export function formatMultiplierBonus(mult) {
-  return `${mult >= 1 ? '+' : ''}${Math.round((mult - 1) * 100)}%`;
-}
-
-/** 0.05 -> "+5%" (a per-stack fraction) */
-export function formatFraction(fraction) {
-  return `${fraction >= 0 ? '+' : ''}${Math.round(fraction * 100)}%`;
-}
-
-/** 1.5 -> "1.5 tiles", 1 -> "1 tile" */
-export function formatTiles(tiles) {
-  const rounded = Math.round(tiles * 10) / 10;
-  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return `${text} ${rounded === 1 ? 'tile' : 'tiles'}`;
-}
-
-/** 36.000000001 -> "36" */
-export function formatNumber(value) {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
-
-/** ticks per action -> "2/s" */
-function formatRate(cooldownTicks) {
-  const perSecond = TICK_RATE / cooldownTicks;
-  const rounded = Math.round(perSecond * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}/s`;
-}
+// Formatters live in format.js and are re-exported here: both this module and
+// abilityText.js need them, and the tests import them from this path.
+export {
+  formatSeconds,
+  formatMultiplierBonus,
+  formatFraction,
+  formatTiles,
+  formatNumber,
+  formatRate,
+} from './format.js';
 
 // --- Content builders ---
 
@@ -240,6 +228,7 @@ export function buildHelpContent({
   bindings = BINDINGS,
   debugBindings = DEBUG_BINDINGS,
   itemButtonLabel = shortLabelFor('Use item'),
+  draft = DRAFT,
 } = {}) {
   const combat = buildCombatRows(actions, characters, boostBonus, boostPoints);
 
@@ -272,6 +261,21 @@ export function buildHelpContent({
         'Rare, gold outline. They stay with you for the whole match, even if you die. Duplicates stack, with no limit.',
       entries: buildAmuletEntries(pickups),
       footer: 'Your amulets show as gold gems on your HUD panel, with ×N when you hold more than one.',
+    },
+    {
+      id: 'abilities',
+      title: 'ABILITIES',
+      kind: 'abilities',
+      header:
+        `Between rounds everyone takes +1 stat point and one ability out of ${draft.offersPerDraft}, ` +
+        `one player at a time, ${formatSeconds(draft.turnTimeTicks)} each. The round winner picks first and ` +
+        'whoever died first picks last, so being behind means seeing every other choice before you commit. ' +
+        'Run out of time and you get HP plus the first offer.',
+      groups: buildAbilityGroups(characters),
+      footer:
+        'ACTIVE abilities go into one of your two slots — with both full you choose which one to drop, ' +
+        'and the dropped one can be offered to you again. PASSIVE abilities just apply, with no limit on how many you hold. ' +
+        'Everything drafted lasts for the rest of the match.',
     },
     {
       id: 'hud',

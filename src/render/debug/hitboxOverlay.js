@@ -1,5 +1,6 @@
 // F3 debug overlay: draws the sim's actual collision geometry (player radius,
-// cover rects, arena bounds, projectile radius, slash reach arc) as 1px lines
+// cover rects, arena bounds, projectile radius, slash reach arc, dash paths,
+// Whirlwind reach, trap trigger radius, viper hitbox and target) as 1px lines
 // over the art, so hitbox/art alignment can be checked at a glance.
 //
 // It also draws the mouse-aim chain used to diagnose the aim-offset bug:
@@ -14,6 +15,7 @@ import {
   ARENA_HEIGHT_TILES,
   PLAYER_RADIUS_TILES,
   CHARACTERS,
+  TICK_RATE,
 } from '../../sim/config/balance.js';
 import { COVER_BLOCKS, SPAWN_CANDIDATE_TILES } from '../../sim/arena.js';
 import { worldToScreenX, worldToScreenY } from '../coords.js';
@@ -25,6 +27,21 @@ function drawCross(graphics, x, y, size) {
   graphics.moveTo(x, y - size);
   graphics.lineTo(x, y + size);
   graphics.strokePath();
+}
+
+/** Nearest targetable enemy of `ownerId` — the same rule dogs and vipers use. */
+function nearestEnemy(state, ownerId, x, y) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const player of state.players) {
+    if (player.id === ownerId || !player.alive) continue;
+    const dist = Math.hypot(player.x - x, player.y - y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = player;
+    }
+  }
+  return best;
 }
 
 export function createHitboxOverlay(scene) {
@@ -90,20 +107,60 @@ export function createHitboxOverlay(scene) {
         graphics.lineStyle(1, 0x00ff88, 0.9);
         graphics.strokeCircle(dx, dy, dog.radiusTiles * tileToPx);
 
-        let target = null;
-        let bestDist = Infinity;
-        for (const player of state.players) {
-          if (player.id === dog.ownerId || !player.alive) continue;
-          const dist = Math.hypot(player.x - dog.x, player.y - dog.y);
-          if (dist < bestDist) {
-            bestDist = dist;
-            target = player;
-          }
-        }
+        const target = nearestEnemy(state, dog.ownerId, dog.x, dog.y);
         if (target) {
           graphics.lineStyle(1, 0x00ff88, 0.4);
           graphics.lineBetween(dx, dy, worldToScreenX(target.x), worldToScreenY(target.y));
         }
+      }
+
+      // Vipers: hitbox plus a line to the enemy they're hunting, same rule the
+      // sim uses to pick one. Owner-agnostic colour — the line says whose it is.
+      for (const viper of state.vipers) {
+        const vx = worldToScreenX(viper.x);
+        const vy = worldToScreenY(viper.y);
+        graphics.lineStyle(1, 0x7ce07c, 0.9);
+        graphics.strokeCircle(vx, vy, viper.radiusTiles * tileToPx);
+
+        const target = nearestEnemy(state, viper.ownerId, viper.x, viper.y);
+        if (target) {
+          graphics.lineStyle(1, 0x7ce07c, 0.4);
+          graphics.lineBetween(vx, vy, worldToScreenX(target.x), worldToScreenY(target.y));
+        }
+      }
+
+      // Thorn traps: the real trigger radius, bright once armed. An unarmed
+      // trap is drawn too, so you can see one before it can bite.
+      for (const trap of state.traps) {
+        const armed = state.tick >= trap.armedAtTick;
+        graphics.lineStyle(1, 0x3fa34d, armed ? 0.9 : 0.3);
+        graphics.strokeCircle(worldToScreenX(trap.x), worldToScreenY(trap.y), trap.radiusTiles * tileToPx);
+      }
+
+      // Dashes (Charge and Roll): the path still to run, and the end point.
+      // A Charge also sweeps players along the way; a Roll is invulnerable, so
+      // the two are drawn in different colours.
+      for (const player of state.players) {
+        if (!player.dash) continue;
+        // vx/vy are tiles per SECOND — the sim divides by TICK_RATE each tick,
+        // so the remaining path has to as well or the line overshoots 60x.
+        const remaining = Math.max(0, player.dash.ticksLeft);
+        const px = worldToScreenX(player.x);
+        const py = worldToScreenY(player.y);
+        const endX = worldToScreenX(player.x + (player.dash.vx / TICK_RATE) * remaining);
+        const endY = worldToScreenY(player.y + (player.dash.vy / TICK_RATE) * remaining);
+
+        graphics.lineStyle(1, player.dash.invulnerable ? 0x4ee0c0 : 0xff5a4e, 0.9);
+        graphics.lineBetween(px, py, endX, endY);
+        graphics.strokeCircle(endX, endY, radiusPx);
+      }
+
+      // Whirlwind reach, for anyone holding it: it is the player's real Slash
+      // reach, drawn always so the ring FX can be checked against the number.
+      for (const player of state.players) {
+        if (!player.alive || !player.abilities.slots.includes('whirlwind')) continue;
+        graphics.lineStyle(1, 0xff5a4e, 0.3);
+        graphics.strokeCircle(worldToScreenX(player.x), worldToScreenY(player.y), player.slashReachTiles * tileToPx);
       }
 
       // Candidate spawn tiles, as dim dots.

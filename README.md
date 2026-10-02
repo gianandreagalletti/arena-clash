@@ -114,7 +114,8 @@ untouched by amulets this pass.
 ### The Help screen
 
 **H** / gamepad **View** on the join or boost screen opens an in-game reference:
-controls, combat, every pickup and amulet with its real sprite, and a HUD legend.
+controls, combat, every pickup and amulet with its real sprite, all 15 draftable
+abilities, and a HUD legend.
 
 Two rules keep it from going stale, and both are covered by `tests/help.test.js`:
 
@@ -132,6 +133,25 @@ A test fails if a pickup exists in `balance.js` with no Help entry, or if Help
 documents something that isn't a real item. Control labels live in
 `src/input/bindings.js`, which is display data only: it names the mappings, it
 does not define them.
+
+### The end-of-round log
+
+`sim/log.js` builds a plain, serializable object at the end of every round and
+`GameScene` prints it to the console. It is the raw material for a balance pass,
+so everything in it is what actually happened, never what was asked for:
+
+- **Per player** — boosts, stat picks, damage dealt/taken, eliminations, time of
+  death, pickups collected, items used, amulets held, the loadout (both slots and
+  every passive), and the abilities' own numbers. An ability lands in exactly one
+  of two columns: `damageByAbility` when it dealt damage, `abilityUses` when it
+  did not (a dash, a summon, a Vanish), so neither double-counts the other.
+- **The draft that set the round up** — pick order, what each player was offered,
+  what they took, which slot it went into, what it pushed out, and whether the
+  turn timed out. Round 1 has no draft in front of it, so its log records `null`.
+
+A pick's input may carry a `replaceSlot` that is never used, because a slot was
+free. The log records the slot the ability *actually* went into and what was
+*actually* dropped, not the request — `tests/log.test.js` pins that distinction.
 
 ### Pre-match boost allocation
 
@@ -165,10 +185,10 @@ Opens the join screen at `http://localhost:5173`. Build for itch.io later with `
 - Join screen: each device claims a slot. **Gamepad:** press **A** to join, **B** to leave. **Keyboard/Mouse:** press **Enter** or **left-click** to join, **Esc** to leave.
 - Once all 3 slots (P1–P3) are filled, any joined player presses **Start** (gamepad) or **Space** to begin.
 - Boost screen: **Gamepad** d-pad/left stick to pick a category, **A** add a point, **B** remove, **Start** to ready up (press again to un-ready). **Keyboard:** Up/Down to pick, Right to add, Left to remove, **Enter** to ready. The match starts when all three are ready.
-- **Help:** press **H** (keyboard) or **View/Back** (gamepad) on the join or boost screen. Any connected device can open it; it claims no slot. Close with **Esc** / **B** (or the same button) and you return exactly where you were — slots and boost allocations are kept. Tabs: Controls, Combat, Pickups, Amulets, HUD. Not available during a round (there is no pause system).
+- **Help:** press **H** (keyboard) or **View/Back** (gamepad) on the join or boost screen. Any connected device can open it; it claims no slot. Close with **Esc** / **B** (or the same button) and you return exactly where you were — slots and boost allocations are kept. Tabs: Controls, Combat, Pickups, Amulets, Abilities, HUD. Not available during a round (there is no pause system).
 - **F1** toggles debug solo mode at any time: the keyboard controls one player directly, bypassing the join screen (handy for solo testing without 3 controllers). Slots with no device auto-ready at zero boost points.
 - **F2** (join screen) toggles the gamepad debug overlay: live pads Phaser sees, plus each slot's stored pad index and whether it still resolves.
-- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc, dog hitbox, nova radius — always, not just while charging, pickup reach, candidate spawn tiles, blast and mine-trigger radii) as 1px lines over the art, plus the dog's current target and the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
+- **F3** (in-match) toggles a hitbox + aim overlay: the sim's actual collision geometry (player radius, cover rects, arena bounds, projectile radius, active slash reach/arc, dog hitbox, nova radius — always, not just while charging, pickup reach, candidate spawn tiles, blast and mine-trigger radii, viper hitbox, thorn-trap trigger radius — dim until armed, Whirlwind reach for anyone holding it, and the remaining path of a Charge (red) or a Roll (cyan)) as 1px lines over the art, plus the dog's and viper's current target and the mouse-aim chain — green cross = the mouse player's sim position, cyan cross = the world aim point the sim received, white square = the raw pointer pixel. Cyan and white sitting on top of each other means screen → world is correct.
 - **Gamepad:** left stick move, right stick aim (holds last direction when idle), **RT** Shoot, **RB** Slash, **LB** Shield, **Y** character ability, **X** use item.
 - **Keyboard/Mouse:** WASD move, mouse aim (toward cursor), left-click Shoot, **E** Slash, **Q** Shield, **R** character ability, **F** use item.
 - **Character ability (Y / R):** Berserker casts the nova (costs ult charge), Summoner summons its dog. Sniper has none. Watch the HUD: the charge bar blinks orange on "NOVA READY", and the Summoner panel shows its dog's HP or a respawn countdown.
@@ -242,6 +262,9 @@ src/
     ui/                 # shared panel + pixel-text-style helpers
     debug/              # F3 hitbox overlay
     help/               # helpContent.js — the Help screen as plain data
+                        # abilityText.js — the 15 abilities in words, shared by
+                        #   the draft screen and the Help Abilities tab
+                        # format.js — number formatters both of them use
     coords.js           # world tile <-> screen px (adds the 1-tile wall margin);
                         #   screenToWorld() is the ONE mouse -> world conversion
     hud.js

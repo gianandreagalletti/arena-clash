@@ -9,7 +9,7 @@ import {
   formatTiles,
   formatNumber,
 } from '../src/render/help/helpContent.js';
-import { PICKUPS } from '../src/sim/config/balance.js';
+import { PICKUPS, ABILITIES, DRAFT } from '../src/sim/config/balance.js';
 import { BINDINGS } from '../src/input/bindings.js';
 
 function tabById(content, id) {
@@ -140,4 +140,45 @@ test('help: formatters produce clean human strings', () => {
   // Float noise from the config must never reach the screen.
   assert.strictEqual(formatNumber(36.000000001), '36');
   assert.strictEqual(formatFraction(0.06000000000000001), '+6%');
+});
+
+test('help: the abilities tab lists every ability in balance.js, once, with an icon', () => {
+  const tab = tabById(HELP_CONTENT, 'abilities');
+  const characterIds = Object.keys(ABILITIES);
+
+  assert.deepStrictEqual(
+    tab.groups.map((g) => g.characterId),
+    characterIds,
+    'one group per character, in balance.js order'
+  );
+
+  const seen = new Set();
+  for (const group of tab.groups) {
+    const expected = Object.keys(ABILITIES[group.characterId]);
+    assert.deepStrictEqual(group.abilities.map((a) => a.id), expected);
+
+    for (const ability of group.abilities) {
+      assert.ok(!seen.has(ability.id), `${ability.id} is listed twice`);
+      seen.add(ability.id);
+
+      const config = ABILITIES[group.characterId][ability.id];
+      assert.strictEqual(ability.name, config.name);
+      assert.strictEqual(ability.textureKey, `ability-${ability.id}`);
+      assert.strictEqual(ability.typeLabel, config.type === 'active' ? 'ACTIVE' : 'PASSIVE');
+      assert.ok(ability.effect.length > 10, `${ability.id} has no effect text`);
+      // Only actives have a cooldown, and it must be stated when they do.
+      if (config.cooldownTicks) assert.ok(ability.cooldownLabel, `${ability.id} hides its cooldown`);
+      else assert.strictEqual(ability.cooldownLabel, null);
+    }
+  }
+});
+
+test('help: the abilities tab reads its draft numbers from the config', () => {
+  const bigger = buildHelpContent({
+    draft: { ...DRAFT, offersPerDraft: 7, turnTimeTicks: 60 * 9 },
+  });
+  const header = tabById(bigger, 'abilities').header;
+
+  assert.ok(header.includes('one ability out of 7'), `offer count not read from config: "${header}"`);
+  assert.ok(header.includes('9 s'), `turn time not read from config: "${header}"`);
 });

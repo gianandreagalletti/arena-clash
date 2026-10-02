@@ -6,8 +6,8 @@
 //
 // Adding an ability: add its entry to balance.js ABILITIES and one line here.
 
-import { ABILITIES, TICK_RATE, abilityConfig } from '../../sim/config/balance.js';
-import { formatSeconds, formatTiles, formatNumber, formatMultiplierBonus } from './helpContent.js';
+import { ABILITIES, TICK_RATE, CHARACTERS, abilityConfig } from '../../sim/config/balance.js';
+import { formatSeconds, formatTiles, formatNumber, formatMultiplierBonus } from './format.js';
 
 /** 0.8 -> "20% less often"; 1.2 -> "20% more often". */
 function formatRateChange(mult) {
@@ -68,6 +68,22 @@ export function abilityText(characterId, abilityId) {
 /** Every ability of one character, in pool order. */
 export function abilityTextsFor(characterId) {
   return Object.keys(ABILITIES[characterId] || {}).map((id) => abilityText(characterId, id));
+}
+
+/**
+ * The three characters' pools as Help-screen groups, each ability carrying the
+ * icon key the HUD and the draft screen already use. Built from the same
+ * `abilityText` the draft screen reads, so the two can never drift apart.
+ */
+export function buildAbilityGroups(characters = CHARACTERS) {
+  return Object.keys(ABILITIES).map((characterId) => ({
+    characterId,
+    name: characters[characterId] ? characters[characterId].name : characterId,
+    abilities: abilityTextsFor(characterId).map((ability) => ({
+      ...ability,
+      textureKey: `ability-${ability.id}`,
+    })),
+  }));
 }
 
 /** Short label for a slot in the HUD: "Charge 4s" while cooling, "Charge" when ready. */

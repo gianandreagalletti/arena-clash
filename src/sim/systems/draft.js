@@ -106,6 +106,12 @@ function applyPick(state, playerId, pick) {
 
   player.statPicks[pick.stat] += 1;
 
+  // What the pick actually DID, as opposed to what the input asked for: an
+  // input may carry a replaceSlot that is never used because a slot was free.
+  // The end-of-round log reports these, so they have to be the truth.
+  let slot = null;
+  let replaced = null;
+
   if (pick.abilityId) {
     const config = abilityConfig(player.characterId, pick.abilityId);
     if (config.type === 'passive') {
@@ -113,7 +119,8 @@ function applyPick(state, playerId, pick) {
     } else {
       const freeSlot = player.abilities.slots.indexOf(null);
       // A replaced ability simply returns to the pool and can be offered again.
-      const slot = freeSlot !== -1 ? freeSlot : pick.replaceSlot;
+      slot = freeSlot !== -1 ? freeSlot : pick.replaceSlot;
+      replaced = freeSlot !== -1 ? null : player.abilities.slots[slot];
       player.abilities.slots[slot] = pick.abilityId;
     }
   }
@@ -121,7 +128,7 @@ function applyPick(state, playerId, pick) {
   // Stat points and passives both feed the derived stats, so recompute once,
   // here — never per tick.
   recomputeDerivedStats(player);
-  state.draft.picks[playerId] = { ...pick };
+  state.draft.picks[playerId] = { ...pick, slot, replaced };
 }
 
 /**

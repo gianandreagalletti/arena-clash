@@ -110,8 +110,23 @@ export function checkRoundEnd(state) {
   }
 }
 
+function mapValues(object, fn) {
+  const out = {};
+  for (const [key, value] of Object.entries(object)) out[key] = fn(value);
+  return out;
+}
+
 /** Closes the draft and rolls into the next round's countdown. */
 export function finishDraft(state) {
+  // Snapshot before clearing: the end-of-round log for the round this draft is
+  // about to start needs the order, the offers and what each player took.
+  // `beginRound` also nulls state.draft, so this has to happen here, first.
+  state.lastDraft = {
+    afterRoundNumber: state.roundNumber,
+    order: [...state.draft.order],
+    offers: mapValues(state.draft.offers, (list) => [...list]),
+    picks: mapValues(state.draft.picks, (pick) => (pick ? { ...pick } : null)),
+  };
   state.draft = null;
   state.roundNumber += 1;
   beginRound(state, { carryUlt: true });

@@ -169,7 +169,9 @@ function createPlayer(index, characterId, rawBoosts) {
     skillCooldowns: [0, 0],
     skillsHeldLastTick: [false, false],
     chargingSkill: null, // { slot, startTick } while holding Charged Shot
-    dash: null, // { endTick, vx, vy, damage, hitIds, invulnerable } during Charge/Roll
+    // { ticksLeft, vx, vy, damage, invulnerable, hitIds, abilityId } during
+    // Charge/Roll. vx/vy are tiles per SECOND, divided by TICK_RATE each tick.
+    dash: null,
     poisonUntilTick: 0,
     poisonDps: 0,
     poisonSourceId: null,
@@ -241,6 +243,10 @@ export function createInitialState(seed, characterIds, boostAllocations) {
     nextAmuletSpawnTick: 0,
     // Per-round audit trail for the end-of-round log.
     roundPickupEvents: [],
+    // The draft that produced the loadouts for the round now being played, kept
+    // after `state.draft` is cleared so the end-of-round log can report what was
+    // offered and what was taken. Null for round 1, which has no draft before it.
+    lastDraft: null,
     logs: [],
     pendingLogPrint: null, // set by round.js when a round just ended; caller should print + clear
     // Per-tick transient data for rendering (cleared every tick by step()):

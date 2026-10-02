@@ -193,6 +193,7 @@ export default class HelpScene extends Phaser.Scene {
     if (tab.kind === 'controls') y = this._buildControls(tab, y);
     else if (tab.kind === 'combat') y = this._buildCombat(tab, y);
     else if (tab.kind === 'entries') y = this._buildEntries(tab, y);
+    else if (tab.kind === 'abilities') y = this._buildAbilities(tab, y);
     else if (tab.kind === 'legend') y = this._buildLegend(tab, y);
 
     if (tab.footer) y = this._addWrapped(tab.footer, MARGIN, y + 6, PALETTE.itemGold, 8);
@@ -307,6 +308,42 @@ export default class HelpScene extends Phaser.Scene {
         y += 28;
       }
       y += 10;
+    }
+    return y;
+  }
+
+  /**
+   * One block per character, each ability as icon + name + ACTIVE/PASSIVE +
+   * cooldown + one line of effect. Same icons as the HUD slots and the draft
+   * screen, so what you read here is what you see in a match.
+   */
+  _buildAbilities(tab, startY) {
+    let y = startY + 4;
+
+    for (const group of tab.groups) {
+      this._addText(group.name.toUpperCase(), MARGIN, y, PALETTE.torchCore);
+      y += 18;
+
+      for (const ability of group.abilities) {
+        this._addIcon(ability.textureKey, null, ROW_ICON_X, y + 8);
+        this._addText(ability.name, TEXT_X, y, PALETTE.uiText, 10);
+
+        // Wider columns than the pickup rows use: "Piercing Rounds" at 10px runs
+        // straight into a label placed at +150.
+        const isActive = ability.type === 'active';
+        this._addText(
+          ability.typeLabel,
+          TEXT_X + 168,
+          y + 2,
+          isActive ? PALETTE.torchCore : PALETTE.uiTextMuted
+        );
+        if (ability.cooldownLabel) {
+          this._addText(ability.cooldownLabel, TEXT_X + 233, y + 2, PALETTE.itemGold);
+        }
+
+        y = this._addWrapped(ability.effect, TEXT_X, y + 16, PALETTE.uiTextMuted) + 8;
+      }
+      y += 6;
     }
     return y;
   }
