@@ -115,6 +115,14 @@ export function updateSkill(state, player, input, slot, pressed, held) {
         player.effects.cloakUntilTick,
         state.tick + config.durationTicks
       );
+      // Tracked separately so the renderer can hide him outright instead of
+      // just fading him. Gameplay reads cloakUntilTick and is unaffected. A
+      // Cloak pickup taken mid-Vanish therefore outlasts the invisibility and
+      // leaves him faded for the remainder, which is the behaviour we want.
+      player.effects.vanishUntilTick = Math.max(
+        player.effects.vanishUntilTick,
+        state.tick + config.durationTicks
+      );
       break;
     }
     case 'viper':

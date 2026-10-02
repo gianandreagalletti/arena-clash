@@ -1,4 +1,5 @@
-// Timed pickup effects (Overcharge, Adrenaline, Cloak).
+// Timed pickup effects (Overcharge, Adrenaline, Cloak), plus the Sniper's
+// Vanish, which rides on the same cloak state.
 //
 // These are NOT folded into the player's derived stats, because they expire:
 // state.js recomputes derived stats only on amulet pickup, so a timed
@@ -20,6 +21,15 @@ export function isCloaked(state, player) {
   return state.tick < player.effects.cloakUntilTick;
 }
 
+/**
+ * True while the Sniper's Vanish is running, as opposed to a Cloak pickup.
+ * Vanish sets both timers, so this is always a subset of `isCloaked` — it exists
+ * purely so the renderer can hide him outright rather than fade him.
+ */
+export function isVanished(state, player) {
+  return state.tick < player.effects.vanishUntilTick;
+}
+
 /** Damage multiplier for Shoot and Slash right now. */
 export function damageMultiplierFor(state, player) {
   return isOvercharged(state, player) ? PICKUPS.temporary.overcharge.mult : 1;
@@ -30,7 +40,12 @@ export function speedMultiplierFor(state, player) {
   return isAdrenalized(state, player) ? PICKUPS.temporary.adrenaline.mult : 1;
 }
 
-/** Attacking gives your position away: Shooting or Slashing drops the cloak at once. */
+/**
+ * Attacking gives your position away: Shooting or Slashing drops the cloak at
+ * once. Vanish breaks on exactly the same events, so both timers clear together
+ * and the Sniper reappears on that same frame.
+ */
 export function breakCloak(player) {
   player.effects.cloakUntilTick = 0;
+  player.effects.vanishUntilTick = 0;
 }

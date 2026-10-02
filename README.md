@@ -71,6 +71,17 @@ starting points.
 | Adrenaline | Move speed ×1.25 for 6s (refreshes, never stacks) |
 | Shield Battery | Clears the Shield cooldown (no effect on a shield already up) |
 | Cloak | 4s at low alpha, and aim assist can't lock you. **Shooting or Slashing ends it instantly**; taking damage does not |
+
+**Cloak vs Vanish.** The Sniper's Vanish ability runs on the same cloak state —
+same rules, same break conditions — but is drawn completely differently: Cloak
+only fades you, while Vanish hides you outright from everyone, your own player
+included. Nothing of a vanished player is drawn on the playfield: sprite,
+shadow, number tag, reticle, shield bubble, every attached FX, even the floating
+pickup label. His projectiles, his slash smear, his HUD panel and his F3 hitbox
+stay. To let the renderer tell them apart, Vanish sets `effects.vanishUntilTick`
+alongside `effects.cloakUntilTick`; every gameplay rule reads the cloak timer, so
+the extra field changes nothing in the sim. A Cloak picked up mid-Vanish
+therefore outlasts the invisibility and leaves you merely faded for the rest.
 | Grenade | Item slot. Thrown along the aim up to 5 tiles, stops on cover, explodes 1s later for 35 in a 1.5-tile radius |
 | Mine | Item slot. Dropped at your feet, arms after 1s, triggers on any non-owner within 0.6 tiles for 35 in a 1.2-tile radius |
 

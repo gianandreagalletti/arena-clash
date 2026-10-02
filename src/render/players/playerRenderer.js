@@ -116,6 +116,22 @@ export function createPlayerRenderer(scene) {
           continue;
         }
 
+        // Vanish hides him from EVERYONE, his own player included — that is the
+        // whole ability. Visibility rather than alpha 0, so every attached
+        // object goes with him and nothing can be left faintly drawn.
+        //
+        // Position memory keeps updating underneath, so when he reappears the
+        // walk cycle and the afterimage trail resume from where he actually is
+        // rather than from where he vanished.
+        if (state.tick < player.effects.vanishUntilTick) {
+          hidePlayer(visual);
+          mem.prevX = player.x;
+          mem.prevY = player.y;
+          mem.trailB = { ...mem.trailA };
+          mem.trailA = { x: screenX, y: screenY };
+          continue;
+        }
+
         const moving =
           mem.prevX !== null &&
           (Math.abs(player.x - mem.prevX) > MOVE_EPSILON_TILES || Math.abs(player.y - mem.prevY) > MOVE_EPSILON_TILES);
@@ -235,6 +251,24 @@ export function createPlayerRenderer(scene) {
       }
     },
   };
+}
+
+/**
+ * Everything attached to a player, hidden in one place. The tint is cleared
+ * here too: a hit flash landing on the frame he vanishes would otherwise be
+ * waiting, still white, when he comes back.
+ */
+function hidePlayer(visual) {
+  visual.body.clearTint();
+  visual.body.setVisible(false);
+  visual.shadow.setVisible(false);
+  visual.tag.setVisible(false);
+  visual.reticle.setVisible(false);
+  visual.shield.setVisible(false);
+  visual.trailA.setVisible(false);
+  visual.trailB.setVisible(false);
+  visual.chargeGlow.setVisible(false);
+  visual.poison.setVisible(false);
 }
 
 function renderGhost(visual, screenX, screenY, tileY, paletteKey) {

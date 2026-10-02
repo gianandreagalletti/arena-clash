@@ -164,7 +164,12 @@ function createPlayer(index, characterId, rawBoosts) {
     // Pickups (per-round).
     item: null, // null | 'grenade' | 'mine' — the single usable-item slot
     itemHeldLastTick: false, // for edge-triggering the Item button
-    effects: { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0 },
+    // `vanishUntilTick` runs ALONGSIDE cloakUntilTick rather than replacing it:
+    // Vanish sets both, so every gameplay rule keyed on "cloaked" (aim assist,
+    // breaking on attack) behaves exactly as before. The extra field exists only
+    // so the renderer can tell the two apart — Vanish hides the Sniper outright
+    // while the Cloak pickup only fades him.
+    effects: { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0, vanishUntilTick: 0 },
     // Skills (per-round). Index 0/1 match abilities.slots.
     skillCooldowns: [0, 0],
     skillsHeldLastTick: [false, false],

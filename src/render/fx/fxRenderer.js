@@ -592,7 +592,10 @@ function createPickupFx(scene) {
     update(state) {
       for (const player of state.players) {
         const prev = prevCounts.get(player.id);
-        if (prev) {
+        // A floating "+SPD" over a vanished Sniper would hand his position to
+        // the room, so the tally is still tracked but the label is not shown.
+        const vanished = state.tick < player.effects.vanishUntilTick;
+        if (prev && !vanished) {
           for (const [type, count] of Object.entries(player.pickupsCollected)) {
             if (count > (prev[type] || 0)) showLabel(state, player, type);
           }
@@ -611,7 +614,13 @@ function createPickupFx(scene) {
         }
         const owner = state.players.find((p) => p.id === label.playerId);
         if (!owner) continue;
+        // A label already in the air when Vanish starts has to go too.
+        if (state.tick < owner.effects.vanishUntilTick) {
+          label.text.setVisible(false);
+          continue;
+        }
         // Floats up off the player as it fades.
+        label.text.setVisible(true);
         label.text.setPosition(worldToScreenX(owner.x), worldToScreenY(owner.y) - 22 - elapsed);
         label.text.setAlpha(1 - elapsed / LABEL_TICKS);
       }

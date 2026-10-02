@@ -329,6 +329,69 @@ if (shot === 'draft') {
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${outDir}/f3-abilities.png` });
   console.log(`-> ${outDir}/f3-abilities.png`);
+} else if (shot === 'vanish') {
+  // Three shots: Sniper visible, Sniper vanished (F3 on, so the hitbox proves
+  // he is still there), and the frame after he shoots. P0 is the Sniper AND the
+  // keyboard/mouse player in debug solo mode, so the shot is a real left click
+  // through the input layer, not a poke at sim state.
+  await holdKey(page, 'F3');
+  await page.evaluate(() => {
+    const s = window.__ARENA_GAME__.scene.getScene('GameScene').state;
+    s.roundState = 'playing';
+    s.roundStartTick = s.tick;
+    for (const p of s.players) p.invulnUntilTick = s.tick;
+
+    const sniper = s.players.find((p) => p.characterId === 'sniper');
+    sniper.abilities.slots = ['vanish', 'chargedShot'];
+    sniper.x = 12;
+    sniper.y = 9; // open floor, mid-arena
+    sniper.aimX = 1;
+    sniper.aimY = 0;
+    // Something attached to him that must disappear too.
+    sniper.effects.adrenalineUntilTick = s.tick + 600;
+  });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${outDir}/vanish-before.png` });
+  console.log(`-> ${outDir}/vanish-before.png`);
+
+  // vanishUntilTick is a deadline, not a per-tick flag, so setting it once
+  // holds — no render-side pinning needed here.
+  await page.evaluate(() => {
+    const s = window.__ARENA_GAME__.scene.getScene('GameScene').state;
+    const sniper = s.players.find((p) => p.characterId === 'sniper');
+    sniper.effects.cloakUntilTick = s.tick + 900;
+    sniper.effects.vanishUntilTick = s.tick + 900;
+  });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${outDir}/vanish-during.png` });
+  console.log(`-> ${outDir}/vanish-during.png`);
+
+  // Left click = Shoot. This runs the real breakCloak path.
+  const box = await page.locator('canvas').boundingBox();
+  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.6);
+  await page.mouse.down();
+  await page.waitForTimeout(200);
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+
+  const stillHidden = await page.evaluate(() => {
+    const s = window.__ARENA_GAME__.scene.getScene('GameScene').state;
+    const sniper = s.players.find((p) => p.characterId === 'sniper');
+    return sniper.effects.vanishUntilTick > s.tick;
+  });
+  await page.screenshot({ path: `${outDir}/vanish-after-shot.png` });
+  console.log(`-> ${outDir}/vanish-after-shot.png (still vanished: ${stillHidden})`);
+
+  // The Cloak pickup on its own, to show it still only fades him.
+  await page.evaluate(() => {
+    const s = window.__ARENA_GAME__.scene.getScene('GameScene').state;
+    const sniper = s.players.find((p) => p.characterId === 'sniper');
+    sniper.effects.cloakUntilTick = s.tick + 900;
+    sniper.effects.vanishUntilTick = 0;
+  });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${outDir}/vanish-cloak-unchanged.png` });
+  console.log(`-> ${outDir}/vanish-cloak-unchanged.png`);
 } else {
   await page.screenshot({ path: `${outDir}/${shot}.png` });
   console.log(`-> ${outDir}/${shot}.png`);

@@ -45,7 +45,7 @@ function resetPlayerForRound(player) {
   // deliberately left untouched here.
   player.item = null;
   player.itemHeldLastTick = false;
-  player.effects = { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0 };
+  player.effects = { overchargeUntilTick: 0, adrenalineUntilTick: 0, cloakUntilTick: 0, vanishUntilTick: 0 };
   // Skills reset per round: cooldowns, held state, charges and dashes all go.
   player.skillCooldowns = player.skillCooldowns.map(() => 0);
   player.skillsHeldLastTick = [false, false];
