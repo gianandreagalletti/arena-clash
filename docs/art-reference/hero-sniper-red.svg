@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -38 64 76" width="256" height="304">
+<ellipse cx="3" cy="26" rx="21" ry="8" fill="#7A2F1A" opacity="0.4"/>
+<ellipse cx="-8" cy="23" rx="6" ry="4" fill="#2B1710"/><ellipse cx="8" cy="23" rx="6" ry="4" fill="#2B1710"/>
+<rect x="-13" y="2" width="26" height="22" rx="9" fill="#D1382C"/>
+<path d="M-13 15 h26 v1 a9 9 0 0 1 -9 8 h-8 a9 9 0 0 1 -9 -8z" fill="#8F2019"/>
+<rect x="-13" y="2" width="26" height="22" rx="9" fill="none" stroke="#2B1710" stroke-width="3"/>
+<rect x="-8" y="5" width="9" height="4" rx="2" fill="#FFFFFF" opacity="0.35"/>
+<circle cx="-17" cy="11" r="6" fill="#F6C79B" stroke="#2B1710" stroke-width="3"/><circle cx="17" cy="11" r="6" fill="#F6C79B" stroke="#2B1710" stroke-width="3"/>
+<circle cx="0" cy="-8" r="15" fill="#F6C79B" stroke="#2B1710" stroke-width="3"/>
+<ellipse cx="-5.5" cy="-2" rx="2.4" ry="3.4" fill="#2B1710"/><ellipse cx="5.5" cy="-2" rx="2.4" ry="3.4" fill="#2B1710"/>
+<circle cx="-4.6" cy="-3.3" r="1" fill="#FFFFFF"/><circle cx="6.4" cy="-3.3" r="1" fill="#FFFFFF"/>
+<circle cx="-10" cy="3" r="3" fill="#F29A8A" opacity="0.6"/><circle cx="10" cy="3" r="3" fill="#F29A8A" opacity="0.6"/><g id="gear-sniper">
+<path d="M-12 6 q12 7 24 0 l-2 6 q-10 4 -20 0z" fill="#FF5A4E" stroke="#2B1710" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M-15 -9 a15 15 0 0 1 30 0 q-15 -5 -30 0z" fill="#FF5A4E" stroke="#2B1710" stroke-width="3" stroke-linejoin="round"/>
+<path d="M-12 -9 q12 6 24 0 q-3 3 -12 3 q-9 0 -12 -3z" fill="#8F2019" stroke="#2B1710" stroke-width="2.5" stroke-linejoin="round"/>
+<rect x="-15" y="-17" width="30" height="4" rx="2" fill="#2B1710"/>
+<circle cx="-6" cy="-15" r="4.4" fill="#BFE6FF" stroke="#2B1710" stroke-width="2.5"/><circle cx="6" cy="-15" r="4.4" fill="#BFE6FF" stroke="#2B1710" stroke-width="2.5"/>
+<circle cx="-7.2" cy="-16.2" r="1.3" fill="#FFFFFF"/><circle cx="4.8" cy="-16.2" r="1.3" fill="#FFFFFF"/></g>
+</svg>
